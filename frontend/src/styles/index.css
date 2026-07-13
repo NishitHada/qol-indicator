@@ -1,0 +1,235 @@
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  color: #1f2933;
+  background: #f5f6f8;
+}
+
+.app-layout {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+}
+
+.app-header {
+  padding: 0.75rem 1.5rem;
+  border-bottom: 1px solid #e0e3e7;
+  background: #fff;
+}
+
+.app-header h1 {
+  margin: 0;
+  font-size: 1.25rem;
+}
+
+.app-header p {
+  margin: 0.15rem 0 0;
+  font-size: 0.85rem;
+  color: #647084;
+}
+
+.app-body {
+  flex: 1;
+  display: flex;
+  min-height: 0;
+}
+
+.app-map-pane {
+  flex: 0 0 65%;
+  position: relative;
+}
+
+.app-panel-pane {
+  flex: 1;
+  min-width: 320px;
+  border-left: 1px solid #e0e3e7;
+  overflow-y: auto;
+  background: #fff;
+}
+
+/* Map */
+
+.map-view {
+  position: relative;
+  width: 100%;
+  height: 100%;
+}
+
+.map-status {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  color: #647084;
+}
+
+.map-status-error {
+  color: #c0392b;
+}
+
+.map-search-box {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  z-index: 10;
+}
+
+.map-search-input {
+  width: 280px;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid #d3d8de;
+  border-radius: 6px;
+  font-size: 0.9rem;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.15);
+}
+
+/* Score panel */
+
+.score-panel {
+  padding: 1.25rem;
+}
+
+.score-panel-empty {
+  color: #647084;
+  padding: 2rem 1.25rem;
+  text-align: center;
+}
+
+.score-panel-error {
+  color: #c0392b;
+}
+
+.score-panel-note {
+  margin: 0.75rem 0 1rem;
+  padding: 0.6rem 0.75rem;
+  background: #fff6e5;
+  border: 1px solid #f0dca0;
+  border-radius: 6px;
+  font-size: 0.8rem;
+  color: #8a6d1f;
+}
+
+.factor-list-heading {
+  margin: 1.25rem 0 0.5rem;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #96a1b0;
+}
+
+.factor-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+/* Score gauge */
+
+.score-gauge {
+  text-align: center;
+  padding-bottom: 0.75rem;
+  border-bottom: 1px solid #eceff2;
+}
+
+.score-gauge-number {
+  font-size: 2.5rem;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.score-gauge-bar-track {
+  margin: 0.5rem 0;
+  height: 8px;
+  border-radius: 4px;
+  background: #eceff2;
+  overflow: hidden;
+}
+
+.score-gauge-bar-fill {
+  height: 100%;
+  border-radius: 4px;
+  transition: width 0.3s ease;
+}
+
+.score-gauge-label {
+  font-size: 0.8rem;
+  color: #647084;
+}
+
+/* Factor card */
+
+.factor-card {
+  padding: 0.6rem 0.75rem;
+  border: 1px solid #eceff2;
+  border-radius: 8px;
+}
+
+.factor-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.factor-card-label {
+  font-size: 0.85rem;
+  font-weight: 500;
+}
+
+.factor-card-score {
+  font-weight: 700;
+}
+
+.factor-card-bar-track {
+  margin-top: 0.4rem;
+  height: 5px;
+  border-radius: 3px;
+  background: #eceff2;
+  overflow: hidden;
+}
+
+.factor-card-bar-fill {
+  height: 100%;
+  border-radius: 3px;
+}
+
+.factor-card-detail {
+  margin-top: 0.3rem;
+  font-size: 0.75rem;
+  color: #8792a2;
+}
+
+.factor-card-stub {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  opacity: 0.55;
+}
+
+.factor-card-neutral {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.factor-card-badge {
+  font-size: 0.7rem;
+  padding: 0.15rem 0.5rem;
+  border-radius: 999px;
+  background: #eceff2;
+  color: #647084;
+}
+
+.factor-card-badge-neutral {
+  background: #eef2fb;
+  color: #4a5b8c;
+}
