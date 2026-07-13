@@ -1,8 +1,8 @@
-import { useCallback, useRef, useState } from 'react'
-import { Autocomplete, GoogleMap, Marker, useJsApiLoader } from '@react-google-maps/api'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { GoogleMap, Marker, useJsApiLoader } from '@react-google-maps/api'
 
 const LIBRARIES = ['places']
-const DEFAULT_CENTER = { lat: 40.7829, lng: -73.9654 } // Central Park, NYC
+const DEFAULT_CENTER = { lat: 40.7829, lng: -73.9654 } // Central Park, NYC - fallback if geolocation is denied/unavailable
 const MAP_CONTAINER_STYLE = { width: '100%', height: '100%' }
 
 export default function MapView({ onLocationSelect, selectedLocation }) {
@@ -10,8 +10,46 @@ export default function MapView({ onLocationSelect, selectedLocation }) {
     googleMapsApiKey: import.meta.env.VITE_GOOGLE_MAPS_API_KEY,
     libraries: LIBRARIES,
   })
-  const [map, setMap] = useState(null)
-  const autocompleteRef = useRef(null)
+  const [center, setCenter] = useState(DEFAULT_CENTER)
+  const [zoom, setZoom] = useState(13)
+  const searchBoxRef = useRef(null)
+
+  useEffect(() => {
+    if (!navigator.geolocation) return
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        setCenter({ lat: position.coords.latitude, lng: position.coords.longitude })
+      },
+      () => {
+        // Permission denied or unavailable - keep the default fallback center.
+      },
+    )
+  }, [])
+
+  // google.maps.places.Autocomplete (the legacy widget @react-google-maps/api wraps) is
+  // blocked entirely for API keys created after March 2025, so the search box is built
+  // directly on the newer PlaceAutocompleteElement web component instead.
+  useEffect(() => {
+    if (!isLoaded || !searchBoxRef.current || searchBoxRef.current.childElementCount > 0) return
+
+    const placeAutocomplete = new google.maps.places.PlaceAutocompleteElement()
+    searchBoxRef.current.appendChild(placeAutocomplete)
+
+    const handleSelect = async ({ placePrediction }) => {
+      const place = placePrediction.toPlace()
+      await place.fetchFields({ fields: ['location'] })
+      const location = place.location
+      if (!location) return
+      const lat = location.lat()
+      const lng = location.lng()
+      onLocationSelect(lat, lng)
+      setCenter({ lat, lng })
+      setZoom(15)
+    }
+
+    placeAutocomplete.addEventListener('gmp-select', handleSelect)
+    return () => placeAutocomplete.removeEventListener('gmp-select', handleSelect)
+  }, [isLoaded, onLocationSelect])
 
   const handleMapClick = useCallback(
     (event) => {
@@ -19,17 +57,6 @@ export default function MapView({ onLocationSelect, selectedLocation }) {
     },
     [onLocationSelect],
   )
-
-  const handlePlaceChanged = useCallback(() => {
-    const place = autocompleteRef.current?.getPlace()
-    const location = place?.geometry?.location
-    if (!location) return
-    const lat = location.lat()
-    const lng = location.lng()
-    onLocationSelect(lat, lng)
-    map?.panTo({ lat, lng })
-    map?.setZoom(15)
-  }, [map, onLocationSelect])
 
   if (loadError) {
     return (
@@ -44,18 +71,8 @@ export default function MapView({ onLocationSelect, selectedLocation }) {
 
   return (
     <div className="map-view">
-      <div className="map-search-box">
-        <Autocomplete onLoad={(ac) => (autocompleteRef.current = ac)} onPlaceChanged={handlePlaceChanged}>
-          <input type="text" placeholder="Search an address..." className="map-search-input" />
-        </Autocomplete>
-      </div>
-      <GoogleMap
-        mapContainerStyle={MAP_CONTAINER_STYLE}
-        center={DEFAULT_CENTER}
-        zoom={13}
-        onClick={handleMapClick}
-        onLoad={setMap}
-      >
+      <div className="map-search-box" ref={searchBoxRef} />
+      <GoogleMap mapContainerStyle={MAP_CONTAINER_STYLE} center={center} zoom={zoom} onClick={handleMapClick}>
         {selectedLocation && <Marker position={selectedLocation} />}
       </GoogleMap>
     </div>

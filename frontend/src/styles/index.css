@@ -82,15 +82,13 @@ body {
   top: 12px;
   left: 12px;
   z-index: 10;
+  width: 280px;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.15);
+  border-radius: 6px;
 }
 
-.map-search-input {
-  width: 280px;
-  padding: 0.5rem 0.75rem;
-  border: 1px solid #d3d8de;
-  border-radius: 6px;
-  font-size: 0.9rem;
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.15);
+.map-search-box gmp-place-autocomplete {
+  width: 100%;
 }
 
 /* Score panel */
