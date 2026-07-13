@@ -17,11 +17,20 @@ async def lifespan(app: FastAPI):
     await close_client()
 
 
+def _normalize_origin(origin: str) -> str:
+    origin = origin.strip().rstrip("/")
+    if origin and "://" not in origin:
+        origin = f"https://{origin}"
+    return origin
+
+
 def _allowed_origins() -> list[str]:
     # Comma-separated list, e.g. "https://qol-indicator.vercel.app,https://qol.example.com".
     # Defaults to the Vite dev server so local development needs no configuration.
+    # Entries are normalized (trailing slash stripped, scheme defaulted to https) since a
+    # CORS Origin header is always exactly scheme://host with no path or trailing slash.
     raw = os.environ.get("ALLOWED_ORIGINS", "http://localhost:5173")
-    return [origin.strip() for origin in raw.split(",") if origin.strip()]
+    return [_normalize_origin(origin) for origin in raw.split(",") if origin.strip()]
 
 
 def create_app() -> FastAPI:
