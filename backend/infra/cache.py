@@ -23,5 +23,13 @@ class TTLCache:
         self._store[key] = (time.monotonic() + self._ttl, value)
 
 
-def geo_cache_key(lat: float, lng: float) -> str:
-    return f"{round(lat, 4)},{round(lng, 4)}"
+def geo_cache_key(lat: float, lng: float, precision: int = 2) -> str:
+    """Rounds a point to a cache bucket. The default 2 decimal places is ~1.1km.
+
+    This used to be 4 decimal places (~11m), which meant essentially every distinct
+    click was a cache miss - including for air quality and temperature, whose source
+    data is modelled on grids of several kilometres and is genuinely identical across
+    a whole district. Caching those per-11m was making every click refetch a year of
+    hourly data for no benefit.
+    """
+    return f"{round(lat, precision)},{round(lng, precision)}"

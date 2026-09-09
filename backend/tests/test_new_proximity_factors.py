@@ -30,7 +30,7 @@ async def test_compute_found_and_cached(monkeypatch, module, tag, name, expected
     elements = [{"type": "node", "lat": 10.001, "lon": 20.0, "tags": {k: v, "name": name}}]
     client = _mock_client(elements)
     monkeypatch.setattr(overpass_batch, "get_client", lambda: client)
-    overpass_batch._caches.clear()
+    overpass_batch._element_caches.clear()
 
     result = await module.compute(10.0, 20.0)
 

@@ -4,8 +4,8 @@ from domain.models import FactorResult, FactorStatus
 from infra.cache import TTLCache, geo_cache_key
 from infra.geo import haversine_m, score_from_distance_decay
 from infra.http_client import get_client
+from service.overpass_batch import _post as _overpass_post
 
-OVERPASS_URL = "https://overpass-api.de/api/interpreter"
 ADSB_URL = "https://api.adsb.lol/v2/point"
 
 # Shorter than the 24h greenery/water/temperature caches: the live-flight component
@@ -41,12 +41,9 @@ def _build_query(lat: float, lng: float, radius: int, tags: list[tuple[str, str]
 
 
 async def _query_overpass(lat: float, lng: float, radius: int, tags: list[tuple[str, str]]) -> list[dict]:
-    client = get_client()
-    query = _build_query(lat, lng, radius, tags)
-    resp = await client.post(OVERPASS_URL, data={"data": query})
-    resp.raise_for_status()
-    data = resp.json()
-    return data.get("elements", [])
+    # Shares the mirror-failover/timeout handling in overpass_batch rather than
+    # hitting one hardcoded (and measurably slower) endpoint directly.
+    return await _overpass_post(_build_query(lat, lng, radius, tags))
 
 
 def _element_coords(el: dict) -> tuple[float, float] | None:

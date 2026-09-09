@@ -3,13 +3,22 @@ from __future__ import annotations
 from infra.geo import score_from_distance_decay, score_sweet_spot
 from service.overpass_batch import ProximityCategory
 
+# Primary radii are deliberately sized to where each scoring curve stops producing a
+# meaningful number, not to a round guess. Measured against the curves below:
+#   greenery @2500m -> 0.67/100      social hub @2000m -> 40.0 (== baseline)
+#   healthcare @4000m -> 42.6 (baseline 40)
+# Querying further than this in a dense city buys score differences below 1 point
+# while multiplying the area Overpass has to scan - which is what was getting these
+# requests rate-limited (429). The wider fallback_radius_m still covers sparse rural
+# points, where the first query legitimately finds nothing.
+
 # "Closer is always better" - no downside to proximity, only diminishing returns.
 GREENERY = ProximityCategory(
     key="greenery_proximity",
     label="Greenery proximity",
     tags=[("leisure", "park"), ("landuse", "forest"), ("natural", "wood")],
     score_fn=lambda d: score_from_distance_decay(d, 500.0),
-    primary_radius_m=3000,
+    primary_radius_m=2500,
     fallback_radius_m=8000,
 )
 WATER = ProximityCategory(
@@ -31,7 +40,7 @@ HEALTHCARE = ProximityCategory(
     score_fn=lambda d: score_sweet_spot(
         d, sweet_spot_m=1000.0, spread_far_m=1200.0, spread_near_m=300.0, near_penalty_scale=0.5
     ),
-    primary_radius_m=5000,
+    primary_radius_m=4000,
     fallback_radius_m=15000,
     name_tag_keys=("name", "amenity"),
 )
@@ -42,7 +51,7 @@ SOCIAL_HUB = ProximityCategory(
     score_fn=lambda d: score_sweet_spot(
         d, sweet_spot_m=500.0, spread_far_m=500.0, spread_near_m=150.0, near_penalty_scale=1.0
     ),
-    primary_radius_m=3000,
+    primary_radius_m=2000,
     fallback_radius_m=8000,
     name_tag_keys=("name", "amenity", "shop"),
 )
@@ -53,7 +62,7 @@ RELIGIOUS_SITE = ProximityCategory(
     score_fn=lambda d: score_sweet_spot(
         d, sweet_spot_m=500.0, spread_far_m=500.0, spread_near_m=200.0, near_penalty_scale=0.7
     ),
-    primary_radius_m=3000,
+    primary_radius_m=2000,
     fallback_radius_m=8000,
     name_tag_keys=("name", "religion", "denomination"),
 )

@@ -16,7 +16,7 @@ async def test_compute_greenery_found(monkeypatch):
     mock_client = MagicMock()
     mock_client.post = AsyncMock(return_value=mock_resp)
     monkeypatch.setattr(overpass_batch, "get_client", lambda: mock_client)
-    overpass_batch._caches.clear()
+    overpass_batch._element_caches.clear()
 
     result = await greenery_water.compute_greenery(10.0, 20.0)
 
@@ -32,7 +32,7 @@ async def test_compute_greenery_not_found_scores_null_at_factor_level(monkeypatc
     mock_client = MagicMock()
     mock_client.post = AsyncMock(return_value=mock_resp)
     monkeypatch.setattr(overpass_batch, "get_client", lambda: mock_client)
-    overpass_batch._caches.clear()
+    overpass_batch._element_caches.clear()
 
     result = await greenery_water.compute_greenery(89.0, 179.0)
 
@@ -50,7 +50,7 @@ async def test_compute_water_found(monkeypatch):
     mock_client = MagicMock()
     mock_client.post = AsyncMock(return_value=mock_resp)
     monkeypatch.setattr(overpass_batch, "get_client", lambda: mock_client)
-    overpass_batch._caches.clear()
+    overpass_batch._element_caches.clear()
 
     result = await greenery_water.compute_water(15.0, 25.0)
 
