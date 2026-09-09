@@ -5,6 +5,7 @@ from datetime import date, timedelta
 from domain.models import FactorResult, FactorStatus
 from infra.cache import TTLCache, geo_cache_key
 from infra.http_client import get_client
+from service import local_climate
 
 ARCHIVE_URL = "https://archive-api.open-meteo.com/v1/archive"
 
@@ -28,6 +29,30 @@ def _comfort_base(avg_temp: float) -> float:
     return max(0.0, 100.0 - (avg_temp - COMFORT_HIGH_C) * DEGRADE_PER_DEGREE)
 
 
+async def _fetch_series(lat: float, lng: float) -> tuple[list, list, list]:
+    end_date = date.today() - timedelta(days=ARCHIVE_LAG_DAYS)
+    start_date = end_date - timedelta(days=WINDOW_DAYS)
+    client = get_client()
+    resp = await client.get(
+        ARCHIVE_URL,
+        params={
+            "latitude": lat,
+            "longitude": lng,
+            "start_date": start_date.isoformat(),
+            "end_date": end_date.isoformat(),
+            "daily": "temperature_2m_max,temperature_2m_min,temperature_2m_mean",
+            "timezone": "auto",
+        },
+    )
+    resp.raise_for_status()
+    daily = resp.json()["daily"]
+    return (
+        daily["temperature_2m_max"],
+        daily["temperature_2m_min"],
+        daily["temperature_2m_mean"],
+    )
+
+
 async def compute(lat: float, lng: float) -> FactorResult:
     # ~11km buckets. Deliberately coarser than the default: this data comes from
     # the ERA5 reanalysis, whose own grid is coarser still (25-40km), so a finer cache key
@@ -38,37 +63,27 @@ async def compute(lat: float, lng: float) -> FactorResult:
     if cached is not None:
         return cached
 
-    end_date = date.today() - timedelta(days=ARCHIVE_LAG_DAYS)
-    start_date = end_date - timedelta(days=WINDOW_DAYS)
-
-    try:
-        client = get_client()
-        resp = await client.get(
-            ARCHIVE_URL,
-            params={
-                "latitude": lat,
-                "longitude": lng,
-                "start_date": start_date.isoformat(),
-                "end_date": end_date.isoformat(),
-                "daily": "temperature_2m_max,temperature_2m_min,temperature_2m_mean",
-                "timezone": "auto",
-            },
-        )
-        resp.raise_for_status()
-        daily = resp.json()["daily"]
-        max_temps = daily["temperature_2m_max"]
-        min_temps = daily["temperature_2m_min"]
-        mean_temps = daily["temperature_2m_mean"]
-    except Exception as e:
-        return FactorResult(
-            key="temperature",
-            label="Temperature",
-            score=None,
-            raw_value=None,
-            unit=None,
-            status=FactorStatus.ERROR,
-            detail=f"Open-Meteo archive request failed: {e}",
-        )
+    # Inside the bundled grid this needs no network at all. Open-Meteo's archive API
+    # rate-limits Render's shared outbound IP (429) while serving the identical
+    # request fine from an ordinary machine, so relying on it in production meant
+    # this factor never resolved. The bundled series and the network response have
+    # the same shape, so the aggregation below is identical either way.
+    bundled = local_climate.daily_series(lat, lng)
+    if bundled is not None:
+        max_temps, min_temps, mean_temps = bundled
+    else:
+        try:
+            max_temps, min_temps, mean_temps = await _fetch_series(lat, lng)
+        except Exception as e:
+            return FactorResult(
+                key="temperature",
+                label="Temperature",
+                score=None,
+                raw_value=None,
+                unit=None,
+                status=FactorStatus.ERROR,
+                detail=f"Open-Meteo archive request failed: {e}",
+            )
 
     valid_means = [t for t in mean_temps if t is not None]
     if not valid_means:

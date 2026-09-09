@@ -3,6 +3,54 @@
 Drop a pin (or search an address) on a Google Map and get a composite "quality of life"
 score plus a factor-by-factor breakdown for that location.
 
+## Architecture
+
+```
+frontend/ (React + Vite, Google Maps)          backend/ (FastAPI)
+  MapView ──click / address search──►  POST /api/score {lat, lng, profile?}
+  ScorePanel ◄──────────────────────  {overall_score, factors{}, weights_used,
+                                        unverified_factors, personalization_applied}
+```
+
+Inside the backend, one request fans out like this:
+
+```
+api/routes.py
+   └─ service/aggregator.py
+        ├─ overpass_batch.compute_categories()   greenery, water, healthcare,
+        │     ├─ local_osm  (bundled, no network)   social hub, religious site
+        │     └─ Overpass mirrors (fallback, outside the bundled area)
+        ├─ vendor_fallback.resolve() per remaining factor
+        │     ├─ noise_sources   local_osm (roads/airports) + adsb.lol (live flights)
+        │     ├─ temperature     local_climate (bundled) → Open-Meteo archive
+        │     └─ aqi             Open-Meteo air-quality (365-day window)
+        └─ compute_overall() → weights (× personalization) → composite score
+```
+
+**Data sources, and why each lives where it does:**
+
+| Factor | Source | Bundled? |
+|---|---|---|
+| Greenery, water, healthcare, social hub, religious site | OpenStreetMap | ✅ `data/bangalore_osm.json.gz` |
+| Noise sources | OSM roads/airports + adsb.lol live flights | ✅ (OSM part) / live (flights) |
+| Temperature | Open-Meteo archive (ERA5) | ✅ `data/bangalore_climate.json.gz` |
+| Air quality | Open-Meteo air-quality (CAMS) | live, ~11km cache |
+
+Everything static is bundled because **the public Overpass cluster and Open-Meteo's
+archive API both refuse or throttle cloud provider IPs** — verified from Render's
+outbound IP, where Overpass returns connection-refused and the archive returns 429,
+while both serve the identical requests fine from an ordinary machine. That is why
+production used to resolve only 2 of 8 factors. Parks, lakes and last year's weather
+don't change between requests, so none of them belonged behind a live API call.
+
+Four extension points, all declarative:
+
+- **`service/registry.py`** — the factor list. Adding a factor is a new entry plus a
+  `compute(lat, lng)`; the aggregator and frontend need no changes.
+- **`service/overpass_categories.py`** — tags, radii and scoring curve per OSM category.
+- **`service/personalization.py`** — profile → weight-adjustment rules.
+- **`service/vendor_fallback.py`** — multiple providers per factor, tried in order.
+
 ## v1 factors (live)
 
 - Greenery proximity (OpenStreetMap Overpass)
@@ -11,7 +59,8 @@ score plus a factor-by-factor breakdown for that location.
   score is `avg AQI over the year, penalized for how many days crossed into
   "unhealthy or worse"`. A single clear (or single bad) day no longer swings the
   score; see `service/air_quality.py`.
-- Temperature: average & extremes (Open-Meteo)
+- Temperature: average & extremes over a 365-day window (Open-Meteo ERA5, bundled -
+  see below). Scored on a comfort band, penalized by how many days were extreme.
 - Noise sources (OpenStreetMap Overpass — major roads & airports, + adsb.lol live
   low-altitude flight positions). Unlike the proximity factors above, being *close*
   to a road/airport/aircraft scores *low* (loud), not high — see
@@ -47,37 +96,49 @@ score. The rule table is declarative and additive, the same spirit as
 `FACTOR_REGISTRY` - a new personalization dimension (e.g. `has_children`) means
 adding rules, not restructuring the aggregator.
 
-### Geography is bundled, not fetched (the important one)
+### Bundled data (the important one)
 
-`backend/data/bangalore_osm.json.gz` (~0.4MB, 30,853 features) ships with the app and
-is the **primary** source for greenery, water, healthcare, social hubs, religious
-sites, roads and airports anywhere inside the Bangalore bounding box. No network call
-is made for those factors at all.
+Two datasets ship with the app and cover the same Bangalore bounding box
+(12.70–13.25 N, 77.30–77.90 E). Inside it, six of the eight factors need **no network
+call at all**:
 
-This exists because the public Overpass cluster **refuses connections outright from
-cloud provider IPs** - verified from Render's outbound IP, where every mirror returns
-connection-refused while Open-Meteo and GitHub respond in under a second from the same
-host. That is why, in production, only the two Open-Meteo-backed factors (AQI and
-temperature) ever resolved and everything else read "couldn't verify". No amount of
-mirror failover, batching or caching fixes an endpoint that won't accept your IP.
+| File | Size | Contents | Serves |
+|---|---|---|---|
+| `backend/data/bangalore_osm.json.gz` | 0.4 MB | 30,853 OSM features | greenery, water, healthcare, social hub, religious site, roads/airports |
+| `backend/data/bangalore_climate.json.gz` | 0.05 MB | 42-point grid × 366 daily max/min/mean | temperature |
 
-It's also just the right design: parks and lakes don't move, so querying a live API
-for them on every click was never warranted. Measured effect on a real Bangalore
-point: **8/8 factors in ~0.2s**, versus 2/8 in 30-55s before.
+These exist because **both upstreams block or throttle cloud provider IPs.** Verified
+from Render's outbound IP: every Overpass mirror returns connection-refused, and
+Open-Meteo's archive returns `429` — while both serve the identical requests fine from
+an ordinary machine. That is why production resolved only AQI and temperature at
+first, then only 7/8. No amount of mirror failover, batching or cache tuning fixes an
+endpoint that won't accept your IP.
 
-Regenerate the extract with:
+It's also simply the right design. Parks and lakes don't move, and last year's weather
+is settled history — neither belonged behind a per-request API call. Measured on a
+real Bangalore point: **8/8 factors in ~0.2–0.8s**, versus 2/8 in 30–55s before.
+
+Both bundles store *raw inputs*, not precomputed scores, so all scoring logic stays in
+the factor modules and behaves identically whether the data came from the bundle or
+the network. Changing a scoring threshold does not require rebuilding them.
+
+Regenerate:
 
 ```bash
 cd backend
+
+# OSM features (needs osmium-tool)
 brew install osmium-tool
-curl -L -o /tmp/osmbuild/southern-zone.osm.pbf \
+mkdir -p /tmp/osmbuild && curl -L -o /tmp/osmbuild/southern-zone.osm.pbf \
   https://download.geofabrik.de/asia/india/southern-zone-latest.osm.pbf
-python3 scripts/build_bangalore_osm.py     # add --rebuild to redo the osmium steps
+python3 scripts/build_bangalore_osm.py      # --rebuild to redo the osmium steps
+
+# Climate grid (stdlib only; run from a machine that isn't rate-limited)
+python3 scripts/build_bangalore_climate.py
 ```
 
-Points outside the bundled bounds fall back to Overpass over the network, with the
-mirror/caching behaviour described next. To cover another city, widen the bbox in
-`scripts/build_bangalore_osm.py` and re-run it.
+Points outside the bundled bounds fall back to the network paths described below. To
+cover another city, widen the bbox in both scripts and re-run them.
 
 ### Overpass batching (the network fallback path)
 
