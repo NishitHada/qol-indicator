@@ -14,14 +14,6 @@ def _stub(key: str, label: str) -> FactorResult:
     )
 
 
-async def pollution_sources_stub(lat: float, lng: float) -> FactorResult:
-    return _stub("pollution_sources", "Pollution sources")
-
-
-async def wind_ventilation_stub(lat: float, lng: float) -> FactorResult:
-    return _stub("wind_ventilation", "Wind / cross-ventilation")
-
-
 async def crime_rate_stub(lat: float, lng: float) -> FactorResult:
     return _stub("crime_rate", "Crime rate")
 
@@ -40,10 +32,6 @@ async def drinking_water_stub(lat: float, lng: float) -> FactorResult:
 
 async def electricity_availability_stub(lat: float, lng: float) -> FactorResult:
     return _stub("electricity_availability", "Electricity availability")
-
-
-async def bad_odour_stub(lat: float, lng: float) -> FactorResult:
-    return _stub("bad_odour", "Bad odour")
 
 
 async def price_per_sqm_stub(lat: float, lng: float) -> FactorResult:

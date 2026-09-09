@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
-"""Builds the bundled Bangalore climate file that service/local_climate.py reads.
+"""Builds the bundled Bangalore climate grid that service/local_climate.py reads.
+
+Carries daily temperature (max/min/mean) and daily wind (peak speed, dominant
+direction) for every grid point, feeding service/temperature.py and
+service/wind_ventilation.py respectively.
 
 Why this exists: Open-Meteo's archive API (ERA5) rate-limits Render's shared outbound
 IP with a 429, while the identical request succeeds from a normal machine - so the
@@ -65,7 +69,8 @@ def main() -> int:
             "longitude": ",".join(str(p[1]) for p in points),
             "start_date": start_date.isoformat(),
             "end_date": end_date.isoformat(),
-            "daily": "temperature_2m_max,temperature_2m_min,temperature_2m_mean",
+            "daily": "temperature_2m_max,temperature_2m_min,temperature_2m_mean,"
+            "wind_speed_10m_max,wind_direction_10m_dominant",
             "timezone": "auto",
         }
     )
@@ -84,6 +89,12 @@ def main() -> int:
             "max": _round_all(daily.get("temperature_2m_max")),
             "min": _round_all(daily.get("temperature_2m_min")),
             "mean": _round_all(daily.get("temperature_2m_mean")),
+            # Daily peak wind and its dominant direction, for the cross-ventilation
+            # factor. Direction is kept per-day rather than averaged at build time -
+            # the factor measures how much the direction *varies* over the year, which
+            # an average would destroy.
+            "wind_speed": _round_all(daily.get("wind_speed_10m_max")),
+            "wind_dir": _round_all(daily.get("wind_direction_10m_dominant")),
         }
         if not series["mean"]:
             print(f"  skipping {lat},{lng} - no data returned")

@@ -43,6 +43,18 @@ PERSONALIZATION_RULES: list[WeightAdjustmentRule] = [
         applies=_is_elderly,
         reason=f"Age {ELDERLY_AGE_MIN}+: air quality weighted higher (greater health sensitivity)",
     ),
+    WeightAdjustmentRule(
+        factor_key="daily_essentials",
+        multiplier=2.0,
+        applies=_is_elderly,
+        reason=f"Age {ELDERLY_AGE_MIN}+: walkable groceries, pharmacy and banking weighted higher",
+    ),
+    WeightAdjustmentRule(
+        factor_key="connectivity",
+        multiplier=1.6,
+        applies=_is_young,
+        reason=f"Age {YOUNG_AGE_MAX} or under: public transport connectivity weighted higher",
+    ),
 ]
 
 

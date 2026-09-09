@@ -21,9 +21,14 @@ api/routes.py
         │     ├─ local_osm  (bundled, no network)   social hub, religious site
         │     └─ Overpass mirrors (fallback, outside the bundled area)
         ├─ vendor_fallback.resolve() per remaining factor
-        │     ├─ noise_sources   local_osm (roads/airports) + adsb.lol (live flights)
-        │     ├─ temperature     local_climate (bundled) → Open-Meteo archive
-        │     └─ aqi             Open-Meteo air-quality (365-day window)
+        │     ├─ osm_lookup.nearby()  bundled-first OSM reads, shared by:
+        │     │     ├─ connectivity       metro / rail / bus, best mode wins
+        │     │     ├─ daily_essentials   groceries, pharmacy, school, banking
+        │     │     ├─ pollution_sources  landfill, sewage, quarry, industry
+        │     │     └─ noise_sources      roads/airports + adsb.lol live flights
+        │     ├─ temperature       local_climate (bundled) → Open-Meteo archive
+        │     ├─ wind_ventilation  local_climate (bundled) → Open-Meteo archive
+        │     └─ aqi               Open-Meteo air-quality (365-day window)
         └─ compute_overall() → weights (× personalization) → composite score
 ```
 
@@ -32,8 +37,9 @@ api/routes.py
 | Factor | Source | Bundled? |
 |---|---|---|
 | Greenery, water, healthcare, social hub, religious site | OpenStreetMap | ✅ `data/bangalore_osm.json.gz` |
+| Connectivity, daily essentials, pollution sources, bad odour | OpenStreetMap | ✅ same file |
 | Noise sources | OSM roads/airports + adsb.lol live flights | ✅ (OSM part) / live (flights) |
-| Temperature | Open-Meteo archive (ERA5) | ✅ `data/bangalore_climate.json.gz` |
+| Temperature, wind / ventilation | Open-Meteo archive (ERA5) | ✅ `data/bangalore_climate.json.gz` |
 | Air quality | Open-Meteo air-quality (CAMS) | live, ~11km cache |
 
 Everything static is bundled because **the public Overpass cluster and Open-Meteo's
@@ -51,7 +57,11 @@ Four extension points, all declarative:
 - **`service/personalization.py`** — profile → weight-adjustment rules.
 - **`service/vendor_fallback.py`** — multiple providers per factor, tried in order.
 
-## v1 factors (live)
+A fifth is shared rather than declarative: **`service/osm_lookup.py`** is the one place
+that decides bundled-vs-network for any factor reading OSM features, so a new one gets
+that behaviour for free.
+
+## Scored factors (13, live)
 
 - Greenery proximity (OpenStreetMap Overpass)
 - Water proximity (OpenStreetMap Overpass)
@@ -76,18 +86,52 @@ Four extension points, all declarative:
   (`infra.geo.score_from_distance_decay`) - there's no plausible downside to being
   near a park.
 
-Everything else (pollution sources, wind ventilation, crime rate, locality
-premium-ness, road quality, drinking water, electricity availability, bad odour,
-price per m²) is registered as a stub factor (`status: "coming_soon"`) so it can be
-implemented later without touching the aggregator or frontend rendering logic.
+- **Public transport connectivity** (OSM). Metro, suburban rail, bus interchanges and
+  bus stops, each with its own walkable radius. Two decisions matter here. The best
+  mode wins rather than an average, because a metro station 400m away makes a location
+  well-connected however far the nearest bus stop is. And each mode has a **ceiling on
+  what it can certify alone**: only metro reaches 100, a bus stop caps at 65. OSM
+  records that a stop exists, not that it is usefully served, and BMTC frequencies vary
+  enormously by route — so a lone mapped bus stop is real evidence of *some* access and
+  not evidence of a well-connected address. See `service/connectivity.py`.
+- **Daily essentials nearby** (OSM). Groceries, pharmacy, school and banking, scored as
+  four separate errands and averaged. A missing errand scores zero rather than dropping
+  out of the average: twenty supermarkets and no pharmacy is not a well-served location,
+  and averaging only over what was found would score it 100. Distances use a plateau
+  curve (`infra.geo.score_within_walk`) — 80m and 300m to a supermarket are the same
+  errand, so scoring them 30 points apart would be false precision.
+- **Pollution sources** and **bad odour** (OSM). Landfills, sewage plants, quarries,
+  industrial estates and waste depots, scored on inverted decay like noise, with the
+  worst source deciding rather than the nearest. Odour is a deliberately narrower set:
+  an industrial estate degrades air quality without necessarily smelling, while a
+  landfill is smelled kilometres away. Each source's penalty is scaled by its **mapped
+  footprint** — Bangalore mandates a sewage treatment plant in every large apartment
+  complex, and treating a shed-sized unit like a municipal plant was scoring Cubbon Park
+  at 53. Size only ever *reduces* a penalty and only on proof: an unmapped footprint is
+  treated as full-scale, so missing data can never talk the app into approving a
+  location it should have flagged.
+- **Wind / cross-ventilation** (Open-Meteo ERA5, bundled). Two components: average daily
+  peak wind speed, and how evenly the year's wind is spread across the eight compass
+  sectors. The second is the half that speed alone cannot express — cross-ventilation
+  needs air to enter one side of a flat and leave the other, so a location whose wind
+  arrives from one sector all year ventilates only the flats that happen to face it.
+  This is a regional reading at ERA5's ~25km resolution, so it describes the wind
+  arriving at the neighbourhood and cannot see whether the next building blocks it.
+
+Six factors remain registered as stubs (`status: "coming_soon"`) so they can be
+implemented without touching the aggregator or the frontend: crime rate, locality
+premium-ness, road quality, drinking water, electricity availability, and price per m².
+**[TODO.md](TODO.md) says what data each one is waiting on and how to get access**,
+including which sources were surveyed and rejected, and why.
 
 ### Personalization (optional)
 
 `POST /api/score` accepts an optional `profile: { age }`. With no profile (or an
 empty one), the score is computed with the registry's base weights, unchanged -
 personalization is opt-in, never mandatory. With a profile, `service/personalization.py`
-applies matching rules (e.g. age ≤ 30 boosts `social_hub_proximity`; age 60+ boosts
-`healthcare_proximity`, `religious_site_proximity`, and `aqi`) as weight multipliers,
+applies matching rules (e.g. age ≤ 30 boosts `social_hub_proximity` and
+`connectivity`; age 60+ boosts `healthcare_proximity`, `religious_site_proximity`,
+`daily_essentials`, and `aqi`) as weight multipliers,
 then renormalizes every enabled factor's weight back to sum to 1.0 - so personalization
 only ever shifts relative emphasis between factors, never the 0-100 range of the
 result or the floor-on-failure behavior. The response's `personalization_applied`
@@ -99,13 +143,13 @@ adding rules, not restructuring the aggregator.
 ### Bundled data (the important one)
 
 Two datasets ship with the app and cover the same Bangalore bounding box
-(12.70–13.25 N, 77.30–77.90 E). Inside it, six of the eight factors need **no network
-call at all**:
+(12.70–13.25 N, 77.30–77.90 E). Inside it, twelve of the thirteen factors need **no
+network call at all** — everything except live air quality:
 
 | File | Size | Contents | Serves |
 |---|---|---|---|
-| `backend/data/bangalore_osm.json.gz` | 0.4 MB | 30,853 OSM features | greenery, water, healthcare, social hub, religious site, roads/airports |
-| `backend/data/bangalore_climate.json.gz` | 0.05 MB | 42-point grid × 366 daily max/min/mean | temperature |
+| `backend/data/bangalore_osm.json.gz` | 0.7 MB | 48,022 OSM features, 14,113 with a footprint area | greenery, water, healthcare, social hub, religious site, roads/airports, transit stops, shops/schools/banks, pollution sources |
+| `backend/data/bangalore_climate.json.gz` | 0.10 MB | 42-point grid × 366 days of temperature and wind | temperature, wind / ventilation |
 
 These exist because **both upstreams block or throttle cloud provider IPs.** Verified
 from Render's outbound IP: every Overpass mirror returns connection-refused, and
@@ -116,7 +160,7 @@ endpoint that won't accept your IP.
 
 It's also simply the right design. Parks and lakes don't move, and last year's weather
 is settled history — neither belonged behind a per-request API call. Measured on a
-real Bangalore point: **8/8 factors in ~0.2–0.8s**, versus 2/8 in 30–55s before.
+real Bangalore point: **13/13 factors in ~0.2s**, versus 2/8 in 30–55s before.
 
 Both bundles store *raw inputs*, not precomputed scores, so all scoring logic stays in
 the factor modules and behaves identically whether the data came from the bundle or
@@ -142,43 +186,36 @@ cover another city, widen the bbox in both scripts and re-run them.
 
 ### Overpass batching (the network fallback path)
 
-5 of the 6 Overpass-dependent factors (greenery, water, healthcare, social hub,
-religious site - everything except `noise_sources`, which has its own separate live-
-flight component) are resolved through `service/overpass_batch.py`, which combines
-them into as few HTTP calls as possible instead of each firing its own request: one
-combined query covers every category not already cached, and a second (only if
-needed) retries whichever categories came back empty at their fallback radius. This
-replaced 5 separate concurrent requests per score with 1-2, which was the single
-biggest source of the "N factors couldn't be verified" rate-limiting this app used to
-hit in practice. `service/overpass_categories.py` is the shared definition of each
-category's tags/radius/scoring curve - the single source of truth both the batched
-aggregator path and each factor's standalone `compute()` read from.
+Nine factors read OSM features. Inside the bundled area none of them touch the network;
+outside it, this is the path they take.
 
-Even batched, this all depends on one shared free public `overpass-api.de` instance,
-which does rate-limit under heavy use (we hit real `429`s while testing this very
-session, from this session's own cumulative request volume). Handled gracefully - a
-failed factor is floored, not hidden, see Scoring philosophy below - but a second
-Overpass mirror as a fallback vendor (the existing multi-vendor pattern in
-`service/vendor_fallback.py` already supports this) is worth adding if this keeps
-being the bottleneck.
+The five plain proximity categories (greenery, water, healthcare, social hub, religious
+site) go through `service/overpass_batch.py`, which fetches and caches features per
+~550m grid cell so panning around a neighbourhood costs one fetch rather than one per
+click. `service/overpass_categories.py` holds each category's tags, radius and scoring
+curve — the single source of truth for both the batched path and each factor's
+standalone `compute()`.
 
-### Candidate data sources not yet wired in (todo)
+The other four (connectivity, daily essentials, pollution sources, noise sources) each
+combine several sub-lookups with different curves, which a single proximity category
+can't express, so they go through `service/osm_lookup.py` instead. That module is where
+the bundled-vs-network decision lives, so all four inherit it, and it shares
+`overpass_batch`'s mirror failover rather than hitting one hardcoded endpoint.
 
-Found while surveying [bilawalsidhu/gods-eye-view](https://github.com/bilawalsidhu/gods-eye-view)
-for ideas. Deferred because each has weak or nonexistent coverage for Bangalore/India
-specifically, not because the source itself is bad:
+The network path is a fallback and should be treated as one. The public Overpass
+cluster rate-limits under load and refuses cloud provider IPs outright, which is why
+the bundle exists. A failed factor is floored, not hidden — see Scoring philosophy
+below.
 
-- **USGS earthquake feed** (keyless, global) — Karnataka is India's lowest seismic
-  hazard zone (Zone II), so this would rarely have meaningful signal for Bangalore.
-  Worth revisiting if the app ever targets other regions.
-- **NASA FIRMS active fires** (needs a free key, global) — Bangalore's urban core
-  doesn't have the recurring fire signal that e.g. Delhi gets from stubble burning.
-- **TomTom live traffic flow** — an optional enhanced vendor for `noise_sources`
-  (Bangalore is a genuinely high-traffic-noise city) on top of the current
-  OSM-only baseline, once a free TomTom key is added.
-- **GBFS bikeshare feeds** (transit/mobility-access factor) — checked the official
-  system registry directly: **zero GBFS systems currently exist in India**, not just
-  Bangalore. Blocked until an Indian city publishes one, not just deprioritized.
+### What isn't built yet
+
+[TODO.md](TODO.md) is the full list, tiered by how hard the data is to get rather than
+how hard the code is. The short version: road quality, walkability and flood risk need
+**no new access at all** (the tags are already in the OSM extract we download); real
+ground-station air quality needs a **free API key** from OpenAQ or data.gov.in; price
+per m² has a legal public source in Karnataka's guidance-value portal, unlike the
+property portals whose terms forbid it; and crime, electricity and drinking water have
+no source at the ~500m resolution this app scores at.
 
 ## Scoring philosophy
 

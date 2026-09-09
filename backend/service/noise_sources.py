@@ -2,10 +2,9 @@ from __future__ import annotations
 
 from domain.models import FactorResult, FactorStatus
 from infra.cache import TTLCache, geo_cache_key
-from infra.geo import haversine_m, score_from_distance_decay
+from infra.geo import score_from_distance_decay
 from infra.http_client import get_client
-from service import local_osm
-from service.overpass_batch import _post as _overpass_post
+from service import osm_lookup
 
 ADSB_URL = "https://api.adsb.lol/v2/point"
 
@@ -30,33 +29,9 @@ FLIGHT_RADIUS_NM = 15
 FLIGHT_MAX_ALT_FT = 5000
 FLIGHT_DECAY_M = 2000.0
 
-
-def _build_query(lat: float, lng: float, radius: int, tags: list[tuple[str, str]]) -> str:
-    clauses = []
-    for k, v in tags:
-        clauses.append(f'node["{k}"="{v}"](around:{radius},{lat},{lng});')
-        clauses.append(f'way["{k}"="{v}"](around:{radius},{lat},{lng});')
-        clauses.append(f'relation["{k}"="{v}"](around:{radius},{lat},{lng});')
-    body = "\n  ".join(clauses)
-    return f"[out:json][timeout:15];\n(\n  {body}\n);\nout center 20;"
-
-
-async def _query_overpass(lat: float, lng: float, radius: int, tags: list[tuple[str, str]]) -> list[dict]:
-    # Inside the bundled extract's area this needs no network at all. Outside it,
-    # shares the mirror-failover/timeout handling in overpass_batch rather than
-    # hitting one hardcoded (and measurably slower) endpoint directly.
-    if local_osm.covers(lat, lng):
-        return local_osm.elements_near(lat, lng, tags, radius)
-    return await _overpass_post(_build_query(lat, lng, radius, tags))
-
-
-def _element_coords(el: dict) -> tuple[float, float] | None:
-    if "lat" in el and "lon" in el:
-        return el["lat"], el["lon"]
-    center = el.get("center")
-    if center:
-        return center["lat"], center["lon"]
-    return None
+# What to call a feature that has no name tag - "primary" or "aerodrome" is more
+# useful in the detail line than "unnamed feature".
+_NAME_FALLBACKS = ("highway", "aeroway")
 
 
 def _is_road(el: dict) -> bool:
@@ -65,27 +40,6 @@ def _is_road(el: dict) -> bool:
 
 def _is_airport(el: dict) -> bool:
     return el.get("tags", {}).get("aeroway") == "aerodrome"
-
-
-def _nearest_distance(lat: float, lng: float, elements: list[dict]) -> tuple[float, dict] | None:
-    best_dist: float | None = None
-    best_el: dict | None = None
-    for el in elements:
-        coords = _element_coords(el)
-        if coords is None:
-            continue
-        d = haversine_m(lat, lng, coords[0], coords[1])
-        if best_dist is None or d < best_dist:
-            best_dist = d
-            best_el = el
-    if best_el is None or best_dist is None:
-        return None
-    return best_dist, best_el
-
-
-def _feature_name(el: dict) -> str:
-    tags = el.get("tags", {})
-    return tags.get("name") or tags.get("highway") or tags.get("aeroway") or "unnamed feature"
 
 
 def _quietness_score(distance_m: float, decay_m: float) -> float:
@@ -127,7 +81,7 @@ async def compute(lat: float, lng: float) -> FactorResult:
     # Structural signal (roads + airports): static infrastructure, so its failure
     # means we genuinely can't assess this factor.
     try:
-        elements = await _query_overpass(lat, lng, STRUCTURAL_RADIUS_M, ROAD_TAGS + AIRPORT_TAGS)
+        elements = await osm_lookup.nearby(lat, lng, ROAD_TAGS + AIRPORT_TAGS, STRUCTURAL_RADIUS_M)
     except Exception as e:
         return FactorResult(
             key="noise_sources",
@@ -136,24 +90,22 @@ async def compute(lat: float, lng: float) -> FactorResult:
             raw_value=None,
             unit=None,
             status=FactorStatus.ERROR,
-            detail=f"Overpass request failed: {e}",
+            detail=f"Noise-source lookup failed: {e}",
         )
 
     candidates: list[tuple[float, str, float]] = []
 
-    nearest_road = _nearest_distance(lat, lng, [el for el in elements if _is_road(el)])
+    nearest_road = osm_lookup.nearest(lat, lng, [el for el in elements if _is_road(el)])
     if nearest_road is not None:
         dist, el = nearest_road
-        candidates.append(
-            (_quietness_score(dist, ROAD_DECAY_M), f"{_feature_name(el)} (road), {round(dist)}m", dist)
-        )
+        name = osm_lookup.name(el, _NAME_FALLBACKS)
+        candidates.append((_quietness_score(dist, ROAD_DECAY_M), f"{name} (road), {round(dist)}m", dist))
 
-    nearest_airport = _nearest_distance(lat, lng, [el for el in elements if _is_airport(el)])
+    nearest_airport = osm_lookup.nearest(lat, lng, [el for el in elements if _is_airport(el)])
     if nearest_airport is not None:
         dist, el = nearest_airport
-        candidates.append(
-            (_quietness_score(dist, AIRPORT_DECAY_M), f"{_feature_name(el)} (airport), {round(dist)}m", dist)
-        )
+        name = osm_lookup.name(el, _NAME_FALLBACKS)
+        candidates.append((_quietness_score(dist, AIRPORT_DECAY_M), f"{name} (airport), {round(dist)}m", dist))
 
     # Live flight snapshot is a best-effort refinement on top of the structural read
     # above. Its failure must not invalidate an otherwise-valid structural answer, and

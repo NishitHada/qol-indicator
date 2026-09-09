@@ -40,12 +40,7 @@ def covers(lat: float, lng: float) -> bool:
     return _bounds["south"] <= lat <= _bounds["north"] and _bounds["west"] <= lng <= _bounds["east"]
 
 
-def daily_series(lat: float, lng: float) -> tuple[list, list, list] | None:
-    """Daily (max, min, mean) temperature series for the nearest grid point.
-
-    Returns the same shape the Open-Meteo archive response gives, so the caller can
-    run the identical aggregation and scoring over either source.
-    """
+def _series_at(lat: float, lng: float) -> dict[str, list] | None:
     _load()
     if not covers(lat, lng):
         return None
@@ -55,9 +50,31 @@ def daily_series(lat: float, lng: float) -> tuple[list, list, list] | None:
         # Point is inside the bounds but the grid cell has no data (edge of the box);
         # fall back to whichever cell is genuinely nearest.
         series = _nearest_point(lat, lng)
+    return series
+
+
+def daily_series(lat: float, lng: float) -> tuple[list, list, list] | None:
+    """Daily (max, min, mean) temperature series for the nearest grid point.
+
+    Returns the same shape the Open-Meteo archive response gives, so the caller can
+    run the identical aggregation and scoring over either source.
+    """
+    series = _series_at(lat, lng)
     if series is None:
         return None
     return series["max"], series["min"], series["mean"]
+
+
+def wind_series(lat: float, lng: float) -> tuple[list, list] | None:
+    """Daily (peak speed km/h, dominant direction degrees) for the nearest grid point.
+
+    Returns None when the bundle predates the wind fields, so an older artifact keeps
+    serving temperature rather than breaking the whole request.
+    """
+    series = _series_at(lat, lng)
+    if series is None or not series.get("wind_speed") or not series.get("wind_dir"):
+        return None
+    return series["wind_speed"], series["wind_dir"]
 
 
 def _nearest_point(lat: float, lng: float) -> dict[str, list] | None:

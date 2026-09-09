@@ -42,3 +42,18 @@ def score_sweet_spot(
     far_bump = (peak - baseline) * math.exp(-((distance_m - sweet_spot_m) ** 2) / (2 * spread_far_m**2))
     near_penalty = near_penalty_scale * baseline * math.exp(-(distance_m**2) / (2 * spread_near_m**2))
     return max(0.0, min(100.0, baseline + far_bump - near_penalty))
+
+
+def score_within_walk(distance_m: float, full_credit_m: float, decay_m: float, ceiling: float = 100.0) -> float:
+    """Full marks anywhere inside a walkable radius, then exponential decay beyond it.
+
+    Distinct from score_from_distance_decay, which starts falling from the very first
+    metre: for an amenity you *walk to* (a bus stop, a pharmacy), 80m and 300m are the
+    same lived experience, so scoring them 43 points apart would be false precision.
+    `ceiling` caps what this can ever return, which is how a factor says "this
+    evidence alone is not enough to certify the location as excellent" - see
+    service/connectivity.py, where a lone bus stop is capped below a metro station.
+    """
+    if distance_m <= full_credit_m:
+        return ceiling
+    return max(0.0, min(ceiling, ceiling * math.exp(-(distance_m - full_credit_m) / decay_m)))
