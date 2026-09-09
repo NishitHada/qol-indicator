@@ -29,7 +29,11 @@ def _comfort_base(avg_temp: float) -> float:
 
 
 async def compute(lat: float, lng: float) -> FactorResult:
-    cache_key = geo_cache_key(lat, lng)
+    # ~11km buckets. Deliberately coarser than the default: this data comes from
+    # the ERA5 reanalysis, whose own grid is coarser still (25-40km), so a finer cache key
+    # just multiplies identical upstream requests - which is what got this
+    # endpoint rate-limited (429) in production.
+    cache_key = geo_cache_key(lat, lng, precision=1)
     cached = _cache.get(cache_key)
     if cached is not None:
         return cached
