@@ -16,22 +16,28 @@ export default function ScorePanel({ loading, error, data }) {
     )
   }
 
-  const entries = Object.entries(data.factors)
+  const entries = Object.entries(data.factors ?? {})
   const mainEntries = entries.filter(([, factor]) => factor.status !== 'coming_soon')
   const stubEntries = entries.filter(([, factor]) => factor.status === 'coming_soon')
+  // Defensive: the frontend and backend deploy independently (Vercel/Render), so a
+  // field this build expects can briefly be absent from an older-deployed backend's
+  // response. Falling back to [] means that version-skew window degrades gracefully
+  // instead of crashing the whole app.
+  const unverifiedFactors = data.unverified_factors ?? []
+  const personalizationApplied = data.personalization_applied ?? []
 
   return (
     <div className="score-panel">
       <ScoreGauge score={data.overall_score} />
-      {data.unverified_factors.length > 0 && (
+      {unverifiedFactors.length > 0 && (
         <div className="score-panel-note">
-          {data.unverified_factors.length} factor(s) could not be verified for this location — the
+          {unverifiedFactors.length} factor(s) could not be verified for this location — the
           score above uses a conservative estimate for them rather than assuming they're fine.
         </div>
       )}
-      {data.personalization_applied.length > 0 && (
+      {personalizationApplied.length > 0 && (
         <div className="score-panel-note score-panel-note-personalized">
-          Personalized: {data.personalization_applied.join(' ')}
+          Personalized: {personalizationApplied.join(' ')}
         </div>
       )}
       <div className="factor-list">
