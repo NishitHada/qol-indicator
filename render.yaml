@@ -9,3 +9,5 @@ services:
     envVars:
       - key: ALLOWED_ORIGINS
         sync: false
+      - key: PYTHON_VERSION
+        value: 3.12.7
