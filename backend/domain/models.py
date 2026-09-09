@@ -45,3 +45,27 @@ class FactorDefinition:
     weight: float
     enabled: bool
     vendors: list[VendorAdapter]
+
+
+@dataclass(frozen=True)
+class UserProfile:
+    """Optional, freeform personalization input. Every field defaults to None/absent -
+    a profile with nothing set behaves identically to no profile at all."""
+
+    age: int | None = None
+
+
+ProfilePredicate = Callable[[UserProfile], bool]
+
+
+@dataclass(frozen=True)
+class WeightAdjustmentRule:
+    """Multiplies one factor's base weight when `applies(profile)` is true. Several
+    rules can fire on the same factor (multipliers stack); the aggregator renormalizes
+    all weights back to sum to 1.0 afterward, so this only ever shifts relative
+    emphasis - it never changes what range the composite score can land in."""
+
+    factor_key: str
+    multiplier: float
+    applies: ProfilePredicate
+    reason: str

@@ -29,6 +29,11 @@ export default function ScorePanel({ loading, error, data }) {
           score above uses a conservative estimate for them rather than assuming they're fine.
         </div>
       )}
+      {data.personalization_applied.length > 0 && (
+        <div className="score-panel-note score-panel-note-personalized">
+          Personalized: {data.personalization_applied.join(' ')}
+        </div>
+      )}
       <div className="factor-list">
         {mainEntries.map(([key, factor]) => (
           <FactorCard key={key} factor={factor} />

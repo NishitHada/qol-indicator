@@ -57,6 +57,46 @@ body {
   background: #fff;
 }
 
+/* Personalize panel */
+
+.personalize-panel {
+  padding: 0.85rem 1.25rem;
+  border-bottom: 1px solid #eceff2;
+}
+
+.personalize-label {
+  display: block;
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #96a1b0;
+  margin-bottom: 0.4rem;
+}
+
+.personalize-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.personalize-age-input {
+  width: 80px;
+  padding: 0.4rem 0.6rem;
+  border: 1px solid #d3d8de;
+  border-radius: 6px;
+  font-size: 0.9rem;
+}
+
+.personalize-clear {
+  border: none;
+  background: none;
+  color: #647084;
+  font-size: 0.8rem;
+  cursor: pointer;
+  text-decoration: underline;
+  padding: 0;
+}
+
 /* Map */
 
 .map-view {
@@ -115,6 +155,12 @@ body {
   border-radius: 6px;
   font-size: 0.8rem;
   color: #8a6d1f;
+}
+
+.score-panel-note-personalized {
+  background: #eef2fb;
+  border-color: #c7d3f0;
+  color: #3d4f8c;
 }
 
 .factor-list-heading {

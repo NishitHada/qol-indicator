@@ -3,15 +3,25 @@ from __future__ import annotations
 from fastapi import APIRouter
 
 from api.schemas import FactorResponse, LocationResponse, ScoreRequest, ScoreResponse
+from domain.models import UserProfile
 from service import aggregator
 
 router = APIRouter()
 
 
+def _to_domain_profile(request: ScoreRequest) -> UserProfile | None:
+    if request.profile is None or request.profile.age is None:
+        return None
+    return UserProfile(age=request.profile.age)
+
+
 @router.post("/api/score", response_model=ScoreResponse)
 async def score(request: ScoreRequest) -> ScoreResponse:
+    profile = _to_domain_profile(request)
     factor_results = await aggregator.compute_all(request.lat, request.lng)
-    overall, weights_used, unverified = aggregator.compute_overall(factor_results)
+    overall, weights_used, unverified, personalization_applied = aggregator.compute_overall(
+        factor_results, profile
+    )
 
     factors = {
         key: FactorResponse(
@@ -32,4 +42,5 @@ async def score(request: ScoreRequest) -> ScoreResponse:
         factors=factors,
         weights_used=weights_used,
         unverified_factors=unverified,
+        personalization_applied=personalization_applied,
     )

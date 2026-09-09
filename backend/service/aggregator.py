@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import asyncio
 
-from domain.models import UNVERIFIED_FLOOR_SCORE, FactorResult, FactorStatus
-from service import vendor_fallback
+from domain.models import UNVERIFIED_FLOOR_SCORE, FactorResult, FactorStatus, UserProfile
+from service import personalization, vendor_fallback
 from service.registry import FACTOR_REGISTRY
 
 
@@ -20,26 +20,36 @@ async def compute_all(lat: float, lng: float) -> dict[str, FactorResult]:
     return by_key
 
 
-def compute_overall(factor_results: dict[str, FactorResult]) -> tuple[float, dict[str, float], list[str]]:
+def compute_overall(
+    factor_results: dict[str, FactorResult], profile: UserProfile | None = None
+) -> tuple[float, dict[str, float], list[str], list[str]]:
     """Weighted composite over the enabled (v1) factors.
 
-    Weights are fixed and never renormalized: a factor we couldn't verify
-    (not_found/error) contributes UNVERIFIED_FLOOR_SCORE rather than being
+    With no profile (the default), weights are exactly each factor's registry weight -
+    fixed, never renormalized away from a factor that couldn't be verified: a factor
+    with not_found/error contributes UNVERIFIED_FLOOR_SCORE rather than being
     excluded, so uncertainty can only pull the score down, never up.
+
+    With a profile, weights are first adjusted by any matching personalization rules
+    (see service/personalization.py) and renormalized to sum to 1.0 - this only
+    shifts relative emphasis between factors, it never changes the floor-on-failure
+    behavior above or the 0-100 range of the result.
     """
     enabled_defs = [d for d in FACTOR_REGISTRY if d.enabled]
-    weights_used: dict[str, float] = {}
+    base_weights = {d.key: d.weight for d in enabled_defs}
+    weights_used, personalization_applied = personalization.adjusted_weights(base_weights, profile)
+
     unverified: list[str] = []
     total = 0.0
 
     for definition in enabled_defs:
-        weights_used[definition.key] = definition.weight
+        weight = weights_used[definition.key]
         result = factor_results.get(definition.key)
         if result is not None and result.status == FactorStatus.OK and result.score is not None:
-            total += definition.weight * result.score
+            total += weight * result.score
         else:
-            total += definition.weight * UNVERIFIED_FLOOR_SCORE
+            total += weight * UNVERIFIED_FLOOR_SCORE
             unverified.append(definition.key)
 
     overall = round(total, 1) if enabled_defs else 0.0
-    return overall, weights_used, unverified
+    return overall, weights_used, unverified, personalization_applied

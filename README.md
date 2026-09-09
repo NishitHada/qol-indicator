@@ -15,11 +15,41 @@ score plus a factor-by-factor breakdown for that location.
   `service/noise_sources.py`. Confirmed nothing nearby is scored as a verified
   "quiet" `100`, not floored as unverified, since absence of noise sources here is
   the good outcome.
+- Healthcare proximity, social hub proximity (bars/cafés/nightlife/malls), and
+  religious site proximity — all OpenStreetMap Overpass, sharing the "closer is
+  better" logic in `service/overpass_proximity.py`.
 
 Everything else (pollution sources, wind ventilation, crime rate, locality
 premium-ness, road quality, drinking water, electricity availability, bad odour,
 price per m²) is registered as a stub factor (`status: "coming_soon"`) so it can be
 implemented later without touching the aggregator or frontend rendering logic.
+
+### Personalization (optional)
+
+`POST /api/score` accepts an optional `profile: { age }`. With no profile (or an
+empty one), the score is computed with the registry's base weights, unchanged -
+personalization is opt-in, never mandatory. With a profile, `service/personalization.py`
+applies matching rules (e.g. age ≤ 30 boosts `social_hub_proximity`; age 60+ boosts
+`healthcare_proximity`, `religious_site_proximity`, and `aqi`) as weight multipliers,
+then renormalizes every enabled factor's weight back to sum to 1.0 - so personalization
+only ever shifts relative emphasis between factors, never the 0-100 range of the
+result or the floor-on-failure behavior. The response's `personalization_applied`
+lists which rules actually fired, and the frontend surfaces that as a note under the
+score. The rule table is declarative and additive, the same spirit as
+`FACTOR_REGISTRY` - a new personalization dimension (e.g. `has_children`) means
+adding rules, not restructuring the aggregator.
+
+### Known limitation: shared Overpass load
+
+6 of the 8 v1 factors now depend on the same free public `overpass-api.de` instance,
+queried concurrently per request. Individually each factor already degrades
+gracefully (a failed factor is floored, not hidden - see Scoring philosophy below),
+but this does mean a single score request can trigger 6 simultaneous Overpass calls,
+which we've observed getting rate-limited (`429`) more often than when there were
+just 2-3 Overpass-dependent factors. Worth revisiting: batching multiple tag queries
+into fewer Overpass calls per request, staggering/throttling requests, or adding a
+second Overpass mirror as a fallback vendor (the existing multi-vendor pattern in
+`service/vendor_fallback.py` already supports this without any redesign).
 
 ### Candidate data sources not yet wired in (todo)
 

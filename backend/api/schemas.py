@@ -3,9 +3,17 @@ from __future__ import annotations
 from pydantic import BaseModel, Field
 
 
+class UserProfileRequest(BaseModel):
+    """Every field is optional and defaults to unset - personalization only kicks in
+    for the fields you actually provide."""
+
+    age: int | None = Field(default=None, ge=0, le=120)
+
+
 class ScoreRequest(BaseModel):
     lat: float = Field(ge=-90, le=90)
     lng: float = Field(ge=-180, le=180)
+    profile: UserProfileRequest | None = None
 
 
 class FactorResponse(BaseModel):
@@ -29,3 +37,4 @@ class ScoreResponse(BaseModel):
     factors: dict[str, FactorResponse]
     weights_used: dict[str, float]
     unverified_factors: list[str]
+    personalization_applied: list[str]
