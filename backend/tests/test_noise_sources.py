@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from domain.models import FactorStatus
-from service import noise_sources, overpass_batch
+from service import local_osm, noise_sources, overpass_batch
 
 
 def _mock_client(overpass_elements=None, adsb_aircraft=None, overpass_error=None, adsb_error=None):
@@ -30,6 +30,7 @@ async def test_compute_road_only(monkeypatch):
     client = _mock_client(overpass_elements=elements, adsb_aircraft=[])
     monkeypatch.setattr(noise_sources, "get_client", lambda: client)
     monkeypatch.setattr(overpass_batch, "get_client", lambda: client)
+    monkeypatch.setattr(local_osm, "covers", lambda lat, lng: False)
     noise_sources._cache._store.clear()
 
     result = await noise_sources.compute(12.9716, 77.6047)
@@ -48,6 +49,7 @@ async def test_compute_close_road_scores_low_not_high(monkeypatch):
     client = _mock_client(overpass_elements=elements, adsb_aircraft=[])
     monkeypatch.setattr(noise_sources, "get_client", lambda: client)
     monkeypatch.setattr(overpass_batch, "get_client", lambda: client)
+    monkeypatch.setattr(local_osm, "covers", lambda lat, lng: False)
     noise_sources._cache._store.clear()
 
     result = await noise_sources.compute(5.0, 5.0)
@@ -68,6 +70,7 @@ async def test_compute_combines_worst_of_road_and_airport(monkeypatch):
     client = _mock_client(overpass_elements=elements, adsb_aircraft=[])
     monkeypatch.setattr(noise_sources, "get_client", lambda: client)
     monkeypatch.setattr(overpass_batch, "get_client", lambda: client)
+    monkeypatch.setattr(local_osm, "covers", lambda lat, lng: False)
     noise_sources._cache._store.clear()
 
     result = await noise_sources.compute(12.9716, 77.5947)
@@ -82,6 +85,7 @@ async def test_compute_low_altitude_flight_can_only_worsen_score(monkeypatch):
     client = _mock_client(overpass_elements=elements, adsb_aircraft=aircraft)
     monkeypatch.setattr(noise_sources, "get_client", lambda: client)
     monkeypatch.setattr(overpass_batch, "get_client", lambda: client)
+    monkeypatch.setattr(local_osm, "covers", lambda lat, lng: False)
     noise_sources._cache._store.clear()
 
     result = await noise_sources.compute(12.9716, 77.5947)
@@ -95,6 +99,7 @@ async def test_compute_ignores_high_altitude_flights(monkeypatch):
     client = _mock_client(overpass_elements=[], adsb_aircraft=aircraft)
     monkeypatch.setattr(noise_sources, "get_client", lambda: client)
     monkeypatch.setattr(overpass_batch, "get_client", lambda: client)
+    monkeypatch.setattr(local_osm, "covers", lambda lat, lng: False)
     noise_sources._cache._store.clear()
 
     result = await noise_sources.compute(12.9716, 77.5947)
@@ -110,6 +115,7 @@ async def test_compute_confirmed_quiet_when_nothing_nearby(monkeypatch):
     client = _mock_client(overpass_elements=[], adsb_aircraft=[])
     monkeypatch.setattr(noise_sources, "get_client", lambda: client)
     monkeypatch.setattr(overpass_batch, "get_client", lambda: client)
+    monkeypatch.setattr(local_osm, "covers", lambda lat, lng: False)
     noise_sources._cache._store.clear()
 
     result = await noise_sources.compute(1.0, 1.0)
@@ -122,6 +128,7 @@ async def test_compute_overpass_failure_is_error(monkeypatch):
     client = _mock_client(overpass_error=RuntimeError("boom"))
     monkeypatch.setattr(noise_sources, "get_client", lambda: client)
     monkeypatch.setattr(overpass_batch, "get_client", lambda: client)
+    monkeypatch.setattr(local_osm, "covers", lambda lat, lng: False)
     noise_sources._cache._store.clear()
 
     result = await noise_sources.compute(2.0, 2.0)
@@ -137,6 +144,7 @@ async def test_compute_flight_lookup_failure_does_not_invalidate_structural_resu
     client = _mock_client(overpass_elements=elements, adsb_error=RuntimeError("adsb down"))
     monkeypatch.setattr(noise_sources, "get_client", lambda: client)
     monkeypatch.setattr(overpass_batch, "get_client", lambda: client)
+    monkeypatch.setattr(local_osm, "covers", lambda lat, lng: False)
     noise_sources._cache._store.clear()
 
     result = await noise_sources.compute(3.0, 3.0)

@@ -47,7 +47,39 @@ score. The rule table is declarative and additive, the same spirit as
 `FACTOR_REGISTRY` - a new personalization dimension (e.g. `has_children`) means
 adding rules, not restructuring the aggregator.
 
-### Overpass batching
+### Geography is bundled, not fetched (the important one)
+
+`backend/data/bangalore_osm.json.gz` (~0.4MB, 30,853 features) ships with the app and
+is the **primary** source for greenery, water, healthcare, social hubs, religious
+sites, roads and airports anywhere inside the Bangalore bounding box. No network call
+is made for those factors at all.
+
+This exists because the public Overpass cluster **refuses connections outright from
+cloud provider IPs** - verified from Render's outbound IP, where every mirror returns
+connection-refused while Open-Meteo and GitHub respond in under a second from the same
+host. That is why, in production, only the two Open-Meteo-backed factors (AQI and
+temperature) ever resolved and everything else read "couldn't verify". No amount of
+mirror failover, batching or caching fixes an endpoint that won't accept your IP.
+
+It's also just the right design: parks and lakes don't move, so querying a live API
+for them on every click was never warranted. Measured effect on a real Bangalore
+point: **8/8 factors in ~0.2s**, versus 2/8 in 30-55s before.
+
+Regenerate the extract with:
+
+```bash
+cd backend
+brew install osmium-tool
+curl -L -o /tmp/osmbuild/southern-zone.osm.pbf \
+  https://download.geofabrik.de/asia/india/southern-zone-latest.osm.pbf
+python3 scripts/build_bangalore_osm.py     # add --rebuild to redo the osmium steps
+```
+
+Points outside the bundled bounds fall back to Overpass over the network, with the
+mirror/caching behaviour described next. To cover another city, widen the bbox in
+`scripts/build_bangalore_osm.py` and re-run it.
+
+### Overpass batching (the network fallback path)
 
 5 of the 6 Overpass-dependent factors (greenery, water, healthcare, social hub,
 religious site - everything except `noise_sources`, which has its own separate live-

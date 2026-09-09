@@ -4,6 +4,7 @@ from domain.models import FactorResult, FactorStatus
 from infra.cache import TTLCache, geo_cache_key
 from infra.geo import haversine_m, score_from_distance_decay
 from infra.http_client import get_client
+from service import local_osm
 from service.overpass_batch import _post as _overpass_post
 
 ADSB_URL = "https://api.adsb.lol/v2/point"
@@ -41,8 +42,11 @@ def _build_query(lat: float, lng: float, radius: int, tags: list[tuple[str, str]
 
 
 async def _query_overpass(lat: float, lng: float, radius: int, tags: list[tuple[str, str]]) -> list[dict]:
-    # Shares the mirror-failover/timeout handling in overpass_batch rather than
+    # Inside the bundled extract's area this needs no network at all. Outside it,
+    # shares the mirror-failover/timeout handling in overpass_batch rather than
     # hitting one hardcoded (and measurably slower) endpoint directly.
+    if local_osm.covers(lat, lng):
+        return local_osm.elements_near(lat, lng, tags, radius)
     return await _overpass_post(_build_query(lat, lng, radius, tags))
 
 

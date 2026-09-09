@@ -9,6 +9,7 @@ from domain.models import FactorResult, FactorStatus
 from infra.cache import TTLCache
 from infra.geo import haversine_m
 from infra.http_client import get_client
+from service import local_osm
 
 # Ordered by measured responsiveness, not preference: z. consistently answers the same
 # query in ~1s that the round-robin overpass-api.de entry point takes ~10s+ to answer
@@ -238,23 +239,28 @@ async def _fetch_category(
 async def compute_categories(lat: float, lng: float, categories: list[ProximityCategory]) -> dict[str, FactorResult]:
     """Resolves multiple proximity categories for one point.
 
-    Features are cached per ~550m grid cell, so panning around a neighbourhood costs
-    zero network calls after the first click in each cell.
+    Inside the bundled extract's area (see service/local_osm.py) this needs no network
+    at all - the features are shipped with the app. That is the primary path: the
+    public Overpass cluster refuses connections outright from cloud IPs, so relying on
+    it in production meant these factors were permanently unverified. Static geography
+    doesn't belong behind a live API anyway; parks and lakes don't move.
 
-    Uncached categories are fetched concurrently, one request each, spread across the
-    Overpass mirrors. One combined multi-category query was tried first and was
-    consistently rejected (429) for being too heavy in a dense city, while the same
-    categories queried separately each succeed - and running them concurrently means
-    wall-clock time is the slowest single category rather than their sum. Cell caching
-    is what makes this affordable: it's a handful of requests per cell per day, not
-    per click.
+    Outside that area we fall back to Overpass, where features are cached per ~550m
+    grid cell (so panning around a neighbourhood costs nothing after the first click)
+    and uncached categories are fetched concurrently, one request each, spread across
+    mirrors. One combined multi-category query was tried first and was consistently
+    rejected (429) for being too heavy in a dense city.
     """
     results: dict[str, FactorResult] = {}
     cell = tile_key(lat, lng)
     elements_by_category: dict[str, list[dict]] = {}
     to_fetch: list[ProximityCategory] = []
+    use_local = local_osm.covers(lat, lng)
 
     for cat in categories:
+        if use_local:
+            elements_by_category[cat.key] = local_osm.elements_near(lat, lng, cat.tags, cat.fallback_radius_m)
+            continue
         cached = _cache_for(cat).get(cell)
         if cached is not None:
             elements_by_category[cat.key] = cached
@@ -280,9 +286,12 @@ async def compute_categories(lat: float, lng: float, categories: list[ProximityC
         if cat.key in results:  # errored above
             continue
         found = _nearest(lat, lng, elements_by_category.get(cat.key, []))
-        if found is None:
+        if found is None and not use_local:
             # Nothing in this cell's cached features - widen to a point-centred query
-            # at this category's fallback radius before giving up.
+            # at this category's fallback radius before giving up. Skipped when the
+            # answer came from the bundled extract, which is already complete for its
+            # area: "nothing within the fallback radius" is a real answer there, not a
+            # reason to spend 90s failing over mirrors.
             try:
                 fallback_elements = await _post(_build_around_query(lat, lng, cat, cat.fallback_radius_m))
                 found = _nearest(lat, lng, [el for el in fallback_elements if _matches(el, cat.tags)])
