@@ -13,6 +13,15 @@ export default function MapView({ onLocationSelect, selectedLocation }) {
   const [center, setCenter] = useState(DEFAULT_CENTER)
   const [zoom, setZoom] = useState(13)
   const searchBoxRef = useRef(null)
+  // The autocomplete element below is imperatively created once and never torn down,
+  // so its handlers read onLocationSelect through this ref (always current) instead of
+  // depending on the prop's identity directly - that identity changes on every
+  // Personalize-panel keystroke (App.jsx recreates the callback per `age` change), and
+  // this element must not be recreated or left listener-less each time that happens.
+  const onLocationSelectRef = useRef(onLocationSelect)
+  useEffect(() => {
+    onLocationSelectRef.current = onLocationSelect
+  }, [onLocationSelect])
 
   useEffect(() => {
     if (!navigator.geolocation) return
@@ -43,7 +52,7 @@ export default function MapView({ onLocationSelect, selectedLocation }) {
       if (!location) return
       const lat = location.lat()
       const lng = location.lng()
-      onLocationSelect(lat, lng)
+      onLocationSelectRef.current(lat, lng)
       setCenter({ lat, lng })
       setZoom(15)
     }
@@ -85,7 +94,10 @@ export default function MapView({ onLocationSelect, selectedLocation }) {
       placeAutocomplete.removeEventListener('gmp-select', handleSelect)
       placeAutocomplete.removeEventListener('keydown', handleKeyDown)
     }
-  }, [isLoaded, onLocationSelect])
+    // Deliberately just [isLoaded]: this creates the element exactly once. See the
+    // onLocationSelectRef comment above for why onLocationSelect isn't a dependency.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isLoaded])
 
   const handleMapClick = useCallback(
     (event) => {
