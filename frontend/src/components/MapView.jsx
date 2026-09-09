@@ -35,8 +35,9 @@ export default function MapView({ onLocationSelect, selectedLocation }) {
     const placeAutocomplete = new google.maps.places.PlaceAutocompleteElement()
     searchBoxRef.current.appendChild(placeAutocomplete)
 
-    const handleSelect = async ({ placePrediction }) => {
-      const place = placePrediction.toPlace()
+    const lastSelectedAtRef = { current: 0 }
+
+    const applyPlace = async (place) => {
       await place.fetchFields({ fields: ['location'] })
       const location = place.location
       if (!location) return
@@ -47,8 +48,43 @@ export default function MapView({ onLocationSelect, selectedLocation }) {
       setZoom(15)
     }
 
+    const handleSelect = async ({ placePrediction }) => {
+      lastSelectedAtRef.current = Date.now()
+      await applyPlace(placePrediction.toPlace())
+    }
+
+    // gmp-select only fires when a suggestion is explicitly clicked, or arrow-key
+    // highlighted then confirmed with Enter - pressing Enter right after typing, with
+    // nothing highlighted, fires nothing at all. This fetches the top autocomplete
+    // suggestion for whatever's typed as a fallback, so Enter always does something.
+    // The timestamp comparison (rather than a boolean reset) avoids a race against
+    // gmp-select firing as part of the same keydown when a suggestion *was* highlighted.
+    const handleKeyDown = (event) => {
+      if (event.key !== 'Enter') return
+      const keydownAt = Date.now()
+      window.setTimeout(async () => {
+        if (lastSelectedAtRef.current >= keydownAt) return
+        const query = placeAutocomplete.value
+        if (!query) return
+        try {
+          const { suggestions } = await google.maps.places.AutocompleteSuggestion.fetchAutocompleteSuggestions({
+            input: query,
+          })
+          const top = suggestions?.[0]?.placePrediction
+          if (!top) return
+          await applyPlace(top.toPlace())
+        } catch {
+          // No match for the free-typed text - leave the map/score as-is.
+        }
+      }, 150)
+    }
+
     placeAutocomplete.addEventListener('gmp-select', handleSelect)
-    return () => placeAutocomplete.removeEventListener('gmp-select', handleSelect)
+    placeAutocomplete.addEventListener('keydown', handleKeyDown)
+    return () => {
+      placeAutocomplete.removeEventListener('gmp-select', handleSelect)
+      placeAutocomplete.removeEventListener('keydown', handleKeyDown)
+    }
   }, [isLoaded, onLocationSelect])
 
   const handleMapClick = useCallback(
