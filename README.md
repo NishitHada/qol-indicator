@@ -7,7 +7,10 @@ score plus a factor-by-factor breakdown for that location.
 
 - Greenery proximity (OpenStreetMap Overpass)
 - Water proximity (OpenStreetMap Overpass)
-- Air quality / AQI (Open-Meteo)
+- Air quality / AQI (Open-Meteo) — a **365-day window**, not a live snapshot: the
+  score is `avg AQI over the year, penalized for how many days crossed into
+  "unhealthy or worse"`. A single clear (or single bad) day no longer swings the
+  score; see `service/air_quality.py`.
 - Temperature: average & extremes (Open-Meteo)
 - Noise sources (OpenStreetMap Overpass — major roads & airports, + adsb.lol live
   low-altitude flight positions). Unlike the proximity factors above, being *close*
@@ -16,8 +19,13 @@ score plus a factor-by-factor breakdown for that location.
   "quiet" `100`, not floored as unverified, since absence of noise sources here is
   the good outcome.
 - Healthcare proximity, social hub proximity (bars/cafés/nightlife/malls), and
-  religious site proximity — all OpenStreetMap Overpass, sharing the "closer is
-  better" logic in `service/overpass_proximity.py`.
+  religious site proximity — all OpenStreetMap Overpass. These three use an
+  **inverted-U ("sweet spot") curve** (`infra.geo.score_sweet_spot`), not "closer is
+  always better": being immediately adjacent to a nightclub, a hospital, or a place
+  of worship is a real downside (noise, sirens, crowds), not a bonus. Only
+  greenery/water stay on the monotonic "closer is better" curve
+  (`infra.geo.score_from_distance_decay`) - there's no plausible downside to being
+  near a park.
 
 Everything else (pollution sources, wind ventilation, crime rate, locality
 premium-ness, road quality, drinking water, electricity availability, bad odour,
@@ -39,17 +47,27 @@ score. The rule table is declarative and additive, the same spirit as
 `FACTOR_REGISTRY` - a new personalization dimension (e.g. `has_children`) means
 adding rules, not restructuring the aggregator.
 
-### Known limitation: shared Overpass load
+### Overpass batching
 
-6 of the 8 v1 factors now depend on the same free public `overpass-api.de` instance,
-queried concurrently per request. Individually each factor already degrades
-gracefully (a failed factor is floored, not hidden - see Scoring philosophy below),
-but this does mean a single score request can trigger 6 simultaneous Overpass calls,
-which we've observed getting rate-limited (`429`) more often than when there were
-just 2-3 Overpass-dependent factors. Worth revisiting: batching multiple tag queries
-into fewer Overpass calls per request, staggering/throttling requests, or adding a
-second Overpass mirror as a fallback vendor (the existing multi-vendor pattern in
-`service/vendor_fallback.py` already supports this without any redesign).
+5 of the 6 Overpass-dependent factors (greenery, water, healthcare, social hub,
+religious site - everything except `noise_sources`, which has its own separate live-
+flight component) are resolved through `service/overpass_batch.py`, which combines
+them into as few HTTP calls as possible instead of each firing its own request: one
+combined query covers every category not already cached, and a second (only if
+needed) retries whichever categories came back empty at their fallback radius. This
+replaced 5 separate concurrent requests per score with 1-2, which was the single
+biggest source of the "N factors couldn't be verified" rate-limiting this app used to
+hit in practice. `service/overpass_categories.py` is the shared definition of each
+category's tags/radius/scoring curve - the single source of truth both the batched
+aggregator path and each factor's standalone `compute()` read from.
+
+Even batched, this all depends on one shared free public `overpass-api.de` instance,
+which does rate-limit under heavy use (we hit real `429`s while testing this very
+session, from this session's own cumulative request volume). Handled gracefully - a
+failed factor is floored, not hidden, see Scoring philosophy below - but a second
+Overpass mirror as a fallback vendor (the existing multi-vendor pattern in
+`service/vendor_fallback.py` already supports this) is worth adding if this keeps
+being the bottleneck.
 
 ### Candidate data sources not yet wired in (todo)
 

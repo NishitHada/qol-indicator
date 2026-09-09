@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from domain.models import FactorStatus
-from service import healthcare_proximity, religious_site_proximity, social_hub_proximity
+from service import healthcare_proximity, overpass_batch, religious_site_proximity, social_hub_proximity
 
 
 def _mock_client(elements):
@@ -29,8 +29,8 @@ async def test_compute_found_and_cached(monkeypatch, module, tag, name, expected
     k, v = tag
     elements = [{"type": "node", "lat": 10.001, "lon": 20.0, "tags": {k: v, "name": name}}]
     client = _mock_client(elements)
-    monkeypatch.setattr("service.overpass_proximity.get_client", lambda: client)
-    module._cache._store.clear()
+    monkeypatch.setattr(overpass_batch, "get_client", lambda: client)
+    overpass_batch._caches.clear()
 
     result = await module.compute(10.0, 20.0)
 
@@ -38,7 +38,7 @@ async def test_compute_found_and_cached(monkeypatch, module, tag, name, expected
     assert result.key == expected_key
     assert name in result.detail
 
-    # Second call should hit the module's own cache, not the network again.
+    # Second call should hit the shared batch cache, not the network again.
     call_count_before = client.post.call_count
     cached_result = await module.compute(10.0, 20.0)
     assert client.post.call_count == call_count_before

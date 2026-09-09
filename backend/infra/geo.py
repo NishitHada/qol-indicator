@@ -14,3 +14,31 @@ def haversine_m(lat1: float, lng1: float, lat2: float, lng2: float) -> float:
 
 def score_from_distance_decay(distance_m: float, decay_m: float) -> float:
     return max(0.0, min(100.0, 100.0 * math.exp(-distance_m / decay_m)))
+
+
+def score_sweet_spot(
+    distance_m: float,
+    sweet_spot_m: float,
+    spread_far_m: float,
+    spread_near_m: float,
+    baseline: float = 40.0,
+    peak: float = 100.0,
+    near_penalty_scale: float = 1.0,
+) -> float:
+    """Inverted-U scoring for amenities that are bad right next to you (noise/nuisance),
+    good at a walkable-but-not-adjacent distance, and merely mediocre once far away -
+    e.g. nightlife, places of worship, hospitals. Unlike score_from_distance_decay
+    (monotonic "closer is always better", correct for parks/water), this never lets
+    "very close" outscore the sweet spot, and "far away" settles at `baseline` rather
+    than decaying toward 0 - being far from a bar isn't nearly as bad as being right
+    next to one, so it shouldn't be scored as though it were.
+
+    - `sweet_spot_m` / `spread_far_m`: center and width of the reward bump.
+    - `spread_near_m` / `near_penalty_scale`: width and strength of the near-zero
+      penalty. A wider spread_near or higher near_penalty_scale makes proximity more
+      punishing (e.g. nightlife should penalize harder than a hospital, whose noise
+      footprint is milder).
+    """
+    far_bump = (peak - baseline) * math.exp(-((distance_m - sweet_spot_m) ** 2) / (2 * spread_far_m**2))
+    near_penalty = near_penalty_scale * baseline * math.exp(-(distance_m**2) / (2 * spread_near_m**2))
+    return max(0.0, min(100.0, baseline + far_bump - near_penalty))
