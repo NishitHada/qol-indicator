@@ -1,9 +1,8 @@
 from __future__ import annotations
 
-import math
-
 from domain.models import FactorResult, FactorStatus
 from infra.cache import TTLCache, geo_cache_key
+from infra.geo import haversine_m, score_from_distance_decay
 from infra.http_client import get_client
 
 OVERPASS_URL = "https://overpass-api.de/api/interpreter"
@@ -39,15 +38,6 @@ def _build_query(lat: float, lng: float, radius: int, tags: list[tuple[str, str]
     return f"[out:json][timeout:15];\n(\n  {body}\n);\nout center 20;"
 
 
-def _haversine_m(lat1: float, lng1: float, lat2: float, lng2: float) -> float:
-    radius_earth_m = 6371000.0
-    phi1, phi2 = math.radians(lat1), math.radians(lat2)
-    dphi = math.radians(lat2 - lat1)
-    dlambda = math.radians(lng2 - lng1)
-    a = math.sin(dphi / 2) ** 2 + math.cos(phi1) * math.cos(phi2) * math.sin(dlambda / 2) ** 2
-    return 2 * radius_earth_m * math.asin(math.sqrt(a))
-
-
 async def _query_overpass(lat: float, lng: float, radius: int, tags: list[tuple[str, str]]) -> list[dict]:
     client = get_client()
     query = _build_query(lat, lng, radius, tags)
@@ -73,7 +63,7 @@ def _nearest(lat: float, lng: float, elements: list[dict]) -> tuple[float, dict]
         coords = _element_coords(el)
         if coords is None:
             continue
-        d = _haversine_m(lat, lng, coords[0], coords[1])
+        d = haversine_m(lat, lng, coords[0], coords[1])
         if best_dist is None or d < best_dist:
             best_dist = d
             best_el = el
@@ -92,10 +82,6 @@ def _feature_name(el: dict) -> str:
         or tags.get("waterway")
         or "unnamed feature"
     )
-
-
-def _score_from_distance(distance_m: float, decay_m: float) -> float:
-    return max(0.0, min(100.0, 100.0 * math.exp(-distance_m / decay_m)))
 
 
 async def _compute(
@@ -144,7 +130,7 @@ async def _compute(
         return result
 
     distance_m, el = nearest
-    score = _score_from_distance(distance_m, decay_m)
+    score = score_from_distance_decay(distance_m, decay_m)
     result = FactorResult(
         key=key,
         label=label,

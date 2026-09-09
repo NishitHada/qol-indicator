@@ -2,19 +2,8 @@ from __future__ import annotations
 
 from unittest.mock import AsyncMock, MagicMock
 
-import pytest
-
 from domain.models import FactorStatus
 from service import greenery_water
-
-
-def test_haversine_same_point_is_zero():
-    assert greenery_water._haversine_m(0, 0, 0, 0) == 0
-
-
-def test_score_from_distance_decay():
-    assert greenery_water._score_from_distance(0, 500) == 100.0
-    assert greenery_water._score_from_distance(500, 500) == pytest.approx(36.79, abs=0.1)
 
 
 async def test_compute_greenery_found(monkeypatch):

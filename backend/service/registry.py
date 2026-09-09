@@ -1,36 +1,46 @@
 from __future__ import annotations
 
 from domain.models import FactorDefinition, VendorAdapter
-from service import air_quality, greenery_water, placeholders, temperature
+from service import air_quality, greenery_water, noise_sources, placeholders, temperature
 
+# Weights across the 5 enabled factors below sum to 1.0 - the aggregator does a
+# straight weighted sum, so they must be kept in balance whenever a factor is
+# added/removed/reweighted here.
 FACTOR_REGISTRY: list[FactorDefinition] = [
     FactorDefinition(
         "greenery_proximity",
         "Greenery proximity",
-        0.25,
+        0.20,
         True,
         vendors=[VendorAdapter("osm-overpass", greenery_water.compute_greenery)],
     ),
     FactorDefinition(
         "water_proximity",
         "Water proximity",
-        0.15,
+        0.10,
         True,
         vendors=[VendorAdapter("osm-overpass", greenery_water.compute_water)],
     ),
     FactorDefinition(
         "aqi",
         "Air quality",
-        0.35,
+        0.30,
         True,
         vendors=[VendorAdapter("open-meteo", air_quality.compute)],
     ),
     FactorDefinition(
         "temperature",
         "Temperature",
-        0.25,
+        0.20,
         True,
         vendors=[VendorAdapter("open-meteo", temperature.compute)],
+    ),
+    FactorDefinition(
+        "noise_sources",
+        "Noise sources",
+        0.20,
+        True,
+        vendors=[VendorAdapter("osm-overpass+adsb-lol", noise_sources.compute)],
     ),
     # Deferred (v2) - implemented later, weight 0 until then.
     FactorDefinition(
@@ -39,13 +49,6 @@ FACTOR_REGISTRY: list[FactorDefinition] = [
         0.0,
         False,
         vendors=[VendorAdapter("stub", placeholders.pollution_sources_stub)],
-    ),
-    FactorDefinition(
-        "noise_sources",
-        "Noise sources",
-        0.0,
-        False,
-        vendors=[VendorAdapter("stub", placeholders.noise_sources_stub)],
     ),
     FactorDefinition(
         "wind_ventilation",

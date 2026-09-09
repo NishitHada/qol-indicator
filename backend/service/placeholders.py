@@ -18,10 +18,6 @@ async def pollution_sources_stub(lat: float, lng: float) -> FactorResult:
     return _stub("pollution_sources", "Pollution sources")
 
 
-async def noise_sources_stub(lat: float, lng: float) -> FactorResult:
-    return _stub("noise_sources", "Noise sources")
-
-
 async def wind_ventilation_stub(lat: float, lng: float) -> FactorResult:
     return _stub("wind_ventilation", "Wind / cross-ventilation")
 

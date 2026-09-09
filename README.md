@@ -9,11 +9,35 @@ score plus a factor-by-factor breakdown for that location.
 - Water proximity (OpenStreetMap Overpass)
 - Air quality / AQI (Open-Meteo)
 - Temperature: average & extremes (Open-Meteo)
+- Noise sources (OpenStreetMap Overpass — major roads & airports, + adsb.lol live
+  low-altitude flight positions). Unlike the proximity factors above, being *close*
+  to a road/airport/aircraft scores *low* (loud), not high — see
+  `service/noise_sources.py`. Confirmed nothing nearby is scored as a verified
+  "quiet" `100`, not floored as unverified, since absence of noise sources here is
+  the good outcome.
 
-Everything else (pollution/noise sources, wind ventilation, crime rate, locality
+Everything else (pollution sources, wind ventilation, crime rate, locality
 premium-ness, road quality, drinking water, electricity availability, bad odour,
 price per m²) is registered as a stub factor (`status: "coming_soon"`) so it can be
 implemented later without touching the aggregator or frontend rendering logic.
+
+### Candidate data sources not yet wired in (todo)
+
+Found while surveying [bilawalsidhu/gods-eye-view](https://github.com/bilawalsidhu/gods-eye-view)
+for ideas. Deferred because each has weak or nonexistent coverage for Bangalore/India
+specifically, not because the source itself is bad:
+
+- **USGS earthquake feed** (keyless, global) — Karnataka is India's lowest seismic
+  hazard zone (Zone II), so this would rarely have meaningful signal for Bangalore.
+  Worth revisiting if the app ever targets other regions.
+- **NASA FIRMS active fires** (needs a free key, global) — Bangalore's urban core
+  doesn't have the recurring fire signal that e.g. Delhi gets from stubble burning.
+- **TomTom live traffic flow** — an optional enhanced vendor for `noise_sources`
+  (Bangalore is a genuinely high-traffic-noise city) on top of the current
+  OSM-only baseline, once a free TomTom key is added.
+- **GBFS bikeshare feeds** (transit/mobility-access factor) — checked the official
+  system registry directly: **zero GBFS systems currently exist in India**, not just
+  Bangalore. Blocked until an Indian city publishes one, not just deprioritized.
 
 ## Scoring philosophy
 
