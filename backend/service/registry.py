@@ -4,6 +4,7 @@ from domain.models import FactorDefinition, VendorAdapter
 from service import (
     air_quality,
     connectivity,
+    crowding,
     daily_essentials,
     greenery_water,
     healthcare_proximity,
@@ -16,7 +17,7 @@ from service import (
     wind_ventilation,
 )
 
-# Weights across the 13 enabled factors below sum to 1.0 - the aggregator does a
+# Weights across the 14 enabled factors below sum to 1.0 - the aggregator does a
 # straight weighted sum, so they must be kept in balance whenever a factor is
 # added/removed/reweighted here. Personalization (service/personalization.py) can
 # shift these at request time, but always renormalizes back to 1.0 too.
@@ -24,7 +25,7 @@ FACTOR_REGISTRY: list[FactorDefinition] = [
     FactorDefinition(
         "greenery_proximity",
         "Greenery proximity",
-        0.10,
+        0.09,
         True,
         vendors=[VendorAdapter("osm-overpass", greenery_water.compute_greenery)],
     ),
@@ -38,14 +39,14 @@ FACTOR_REGISTRY: list[FactorDefinition] = [
     FactorDefinition(
         "aqi",
         "Air quality",
-        0.15,
+        0.14,
         True,
         vendors=[VendorAdapter("open-meteo", air_quality.compute)],
     ),
     FactorDefinition(
         "temperature",
         "Temperature",
-        0.08,
+        0.07,
         True,
         vendors=[VendorAdapter("open-meteo", temperature.compute)],
     ),
@@ -80,21 +81,21 @@ FACTOR_REGISTRY: list[FactorDefinition] = [
     FactorDefinition(
         "connectivity",
         "Public transport connectivity",
-        0.13,
+        0.12,
         True,
         vendors=[VendorAdapter("osm", connectivity.compute)],
     ),
     FactorDefinition(
         "daily_essentials",
         "Daily essentials nearby",
-        0.11,
+        0.10,
         True,
         vendors=[VendorAdapter("osm", daily_essentials.compute)],
     ),
     FactorDefinition(
         "pollution_sources",
         "Pollution sources",
-        0.08,
+        0.07,
         True,
         vendors=[VendorAdapter("osm", pollution_sources.compute_pollution)],
     ),
@@ -104,6 +105,13 @@ FACTOR_REGISTRY: list[FactorDefinition] = [
         0.03,
         True,
         vendors=[VendorAdapter("osm", pollution_sources.compute_odour)],
+    ),
+    FactorDefinition(
+        "crowding",
+        "Crowding & open space",
+        0.06,
+        True,
+        vendors=[VendorAdapter("ms-building-footprints", crowding.compute)],
     ),
     FactorDefinition(
         "wind_ventilation",

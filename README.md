@@ -26,6 +26,7 @@ api/routes.py
         │     │     ├─ daily_essentials   groceries, pharmacy, school, banking
         │     │     ├─ pollution_sources  landfill, sewage, quarry, industry
         │     │     └─ noise_sources      roads/airports + adsb.lol live flights
+        │     ├─ crowding          local_buildings (bundled, no live vendor)
         │     ├─ temperature       local_climate (bundled) → Open-Meteo archive
         │     ├─ wind_ventilation  local_climate (bundled) → Open-Meteo archive
         │     └─ aqi               Open-Meteo air-quality (365-day window)
@@ -39,6 +40,7 @@ api/routes.py
 | Greenery, water, healthcare, social hub, religious site | OpenStreetMap | ✅ `data/bangalore_osm.json.gz` |
 | Connectivity, daily essentials, pollution sources, bad odour | OpenStreetMap | ✅ same file |
 | Noise sources | OSM roads/airports + adsb.lol live flights | ✅ (OSM part) / live (flights) |
+| Crowding & open space | Microsoft Global ML Building Footprints | ✅ `data/bangalore_buildings.json.gz` |
 | Temperature, wind / ventilation | Open-Meteo archive (ERA5) | ✅ `data/bangalore_climate.json.gz` |
 | Air quality | Open-Meteo air-quality (CAMS) | live, ~11km cache |
 
@@ -61,7 +63,7 @@ A fifth is shared rather than declarative: **`service/osm_lookup.py`** is the on
 that decides bundled-vs-network for any factor reading OSM features, so a new one gets
 that behaviour for free.
 
-## Scored factors (13, live)
+## Scored factors (14, live)
 
 - Greenery proximity (OpenStreetMap Overpass)
 - Water proximity (OpenStreetMap Overpass)
@@ -110,6 +112,19 @@ that behaviour for free.
   at 53. Size only ever *reduces* a penalty and only on proof: an unmapped footprint is
   treated as full-scale, so missing data can never talk the app into approving a
   location it should have flagged.
+- **Crowding & open space** (Microsoft Global ML Building Footprints, bundled). The
+  share of the ground covered by building footprints in a ~660m square, which is a
+  direct measure of setbacks, light and air. Two things make this trustworthy where
+  OpenStreetMap's own buildings would not be. The dataset is machine-extracted
+  uniformly, so an empty area means open land rather than an area nobody has mapped —
+  OSM building detail tracks mapping effort, and mapping effort tracks affluence, so
+  OSM building statistics are biased in exactly the direction that would matter here.
+  And footprint area is split across every cell a building overlaps rather than dumped
+  on its centroid's cell, which is what previously produced a cell claiming 115% built
+  coverage. Height is unavailable for India in this dataset, so this sees ground
+  coverage only: a tower reads the same as a bungalow of equal footprint. There is no
+  live vendor, so outside the bundled area the factor reports unverified rather than
+  guessing. See `service/crowding.py`.
 - **Wind / cross-ventilation** (Open-Meteo ERA5, bundled). Two components: average daily
   peak wind speed, and how evenly the year's wind is spread across the eight compass
   sectors. The second is the half that speed alone cannot express — cross-ventilation
@@ -142,13 +157,14 @@ adding rules, not restructuring the aggregator.
 
 ### Bundled data (the important one)
 
-Two datasets ship with the app and cover the same Bangalore bounding box
-(12.70–13.25 N, 77.30–77.90 E). Inside it, twelve of the thirteen factors need **no
+Three datasets ship with the app and cover the same Bangalore bounding box
+(12.70–13.25 N, 77.30–77.90 E). Inside it, thirteen of the fourteen factors need **no
 network call at all** — everything except live air quality:
 
 | File | Size | Contents | Serves |
 |---|---|---|---|
 | `backend/data/bangalore_osm.json.gz` | 0.7 MB | 48,022 OSM features, 14,113 with a footprint area | greenery, water, healthcare, social hub, religious site, roads/airports, transit stops, shops/schools/banks, pollution sources |
+| `backend/data/bangalore_buildings.json.gz` | 0.41 MB | 45,027 cells of ~220m over 1,030,477 building footprints | crowding & open space |
 | `backend/data/bangalore_climate.json.gz` | 0.10 MB | 42-point grid × 366 days of temperature and wind | temperature, wind / ventilation |
 
 These exist because **both upstreams block or throttle cloud provider IPs.** Verified
@@ -160,7 +176,7 @@ endpoint that won't accept your IP.
 
 It's also simply the right design. Parks and lakes don't move, and last year's weather
 is settled history — neither belonged behind a per-request API call. Measured on a
-real Bangalore point: **13/13 factors in ~0.2s**, versus 2/8 in 30–55s before.
+real Bangalore point: **14/14 factors in ~0.2s**, versus 2/8 in 30–55s before.
 
 Both bundles store *raw inputs*, not precomputed scores, so all scoring logic stays in
 the factor modules and behaves identically whether the data came from the bundle or
@@ -179,6 +195,9 @@ python3 scripts/build_bangalore_osm.py      # --rebuild to redo the osmium steps
 
 # Climate grid (stdlib only; run from a machine that isn't rate-limited)
 python3 scripts/build_bangalore_climate.py
+
+# Building-density grid (stdlib only; downloads ~110 MB of tiles)
+python3 scripts/build_bangalore_buildings.py
 ```
 
 Points outside the bundled bounds fall back to the network paths described below. To

@@ -17,6 +17,7 @@ a scoring curve, and a rebuild of `data/bangalore_osm.json.gz`.
 |---|---|---|
 | **Road width & condition** (`road_quality`) | 8,745 tertiary + 3,998 secondary ways; `surface` on ~29k ways, of which **12,310 asphalt / 10,990 unpaved**; `lanes` on 4,653 | The unpaved count is the signal. Score the nearest road's class + surface + lane count. |
 | **Walkability** (new factor) | 15,024 footways, 242 pedestrian ways, 184k residential streets | Sidewalk tagging is sparse (1,457 `sidewalk=no`), so this has to be footway *density* in a radius, not a per-street verdict. |
+| **Locality premium-ness** (`locality_premium`) | — | See the poshness section below: built form does not measure this. Needs the guidance values in Tier 3. |
 | **Flood risk** (new factor) | 2,630 drains, 140 ditches, plus SRTM elevation | A proxy, and should be labelled as one: drain proximity and local elevation relative to surroundings, not a hydrological model. Bangalore's flooding is real and this is the only free signal for it. |
 
 ## Tier 2 — free, but needs a signup key
@@ -33,6 +34,40 @@ any code is worth writing.
 - **data.gov.in** — returns **HTTP 403** on the demo key. Free registration gives a
   real key. Hosts CPCB realtime AQI plus a lot of other Indian government data worth
   surveying once there is a key to survey it with.
+
+## Measuring "poshness" — investigated, partly resolved
+
+Worth recording, because the obvious approach fails and the failure is not obvious.
+
+The intuition is that bigger houses and lower density mean a more affluent area, and
+that this is measurable from building footprints. **It is not, in Bangalore.** Tested
+against twelve hand-picked areas using two independent datasets:
+
+| Area | Median footprint | Buildings/ha | Built coverage |
+|---|---|---|---|
+| Dollars Colony (affluent) | 195 m² | 3.8 | 13% |
+| Sadashivanagar (affluent) | 186 m² | 13.2 | 30% |
+| D J Halli (informal) | 167 m² | 9.7 | 23% |
+| Chickpet (dense old core) | 271 m² | 11.6 | 56% |
+
+Chickpet has the largest median footprint of anything tested and is one of the most
+crowded places in the city. All three metrics overlap between the affluent and the
+poor groups, so no threshold ranks them correctly. Bangalore's built form simply does
+not track income: old high-value commercial cores are dense, some informal settlements
+are low-rise sprawl, and affluent areas contain both bungalow layouts and apartment
+towers. Caveat on the test itself — twelve coordinates chosen from memory is thin
+ground truth, though the overlap held across both datasets.
+
+**Google Earth imagery cannot be used for this.** It is licensed from Maxar, Airbus and
+CNES, and the Maps Platform terms prohibit bulk download, derived datasets, and
+training models on the content. Google Earth Pro is a viewer licence; Google Earth
+Engine is a separate product whose catalogue is open satellite data, not the
+high-resolution basemap. The extraction that would have been attempted is already
+published under a licence that permits it, which is what the `crowding` factor now uses.
+
+What came out of this instead: the `crowding` factor, which measures built coverage as
+open space and setbacks rather than as a proxy for income. For actual poshness, the
+guidance values below remain the answer — they measure it directly.
 
 ## Tier 3 — public data, but no API
 
