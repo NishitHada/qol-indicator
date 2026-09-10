@@ -24,6 +24,7 @@ export default function ScorePanel({ loading, error, data }) {
   // response. Falling back to [] means that version-skew window degrades gracefully
   // instead of crashing the whole app.
   const unverifiedFactors = data.unverified_factors ?? []
+  const excludedFactors = data.excluded_factors ?? []
   const personalizationApplied = data.personalization_applied ?? []
 
   return (
@@ -37,12 +38,19 @@ export default function ScorePanel({ loading, error, data }) {
       )}
       {personalizationApplied.length > 0 && (
         <div className="score-panel-note score-panel-note-personalized">
-          Personalized: {personalizationApplied.join(' ')}
+          <span className="score-panel-note-title">Personalized for you</span>
+          {/* A list rather than one joined string: several rules now fire at once for
+              a filled-in profile, and running them together made an unreadable wall. */}
+          <ul className="personalization-reasons">
+            {personalizationApplied.map((reason) => (
+              <li key={reason}>{reason}</li>
+            ))}
+          </ul>
         </div>
       )}
       <div className="factor-list">
         {mainEntries.map(([key, factor]) => (
-          <FactorCard key={key} factor={factor} />
+          <FactorCard key={key} factor={factor} excluded={excludedFactors.includes(key)} />
         ))}
       </div>
       {stubEntries.length > 0 && (

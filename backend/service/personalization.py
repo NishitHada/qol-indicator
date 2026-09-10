@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from domain.models import UserProfile, WeightAdjustmentRule
+from domain.models import TransportPreference, UserProfile, WeightAdjustmentRule
 
 YOUNG_AGE_MAX = 30
 ELDERLY_AGE_MIN = 60
@@ -58,6 +58,26 @@ PERSONALIZATION_RULES: list[WeightAdjustmentRule] = [
 ]
 
 
+# factor key -> why it stops counting, for profiles where the factor measures
+# something the user has told us is irrelevant to them. This is different from a
+# weight of zero: an excluded factor is not scored *and not reported as unverified*,
+# because "you said you do not use public transport" is not a gap in our data.
+EXCLUSION_RULES: list[tuple[str, ProfilePredicate, str]] = [
+    (
+        "connectivity",
+        lambda profile: profile.transport_preference == TransportPreference.CAB,
+        "You travel by cab, so public transport connectivity is not counted",
+    ),
+]
+
+
+def excluded_factors(profile: UserProfile | None) -> dict[str, str]:
+    """Factors this profile has opted out of, mapped to the reason why."""
+    if profile is None:
+        return {}
+    return {key: reason for key, applies, reason in EXCLUSION_RULES if applies(profile)}
+
+
 def adjusted_weights(
     base_weights: dict[str, float], profile: UserProfile | None
 ) -> tuple[dict[str, float], list[str]]:
@@ -72,7 +92,11 @@ def adjusted_weights(
     if profile is None:
         return dict(base_weights), []
 
-    adjusted = dict(base_weights)
+    # Excluded factors leave the pool entirely before anything is renormalized, so the
+    # remaining factors share the whole 1.0 between them rather than the composite
+    # quietly losing that much of its range.
+    excluded = excluded_factors(profile)
+    adjusted = {k: v for k, v in base_weights.items() if k not in excluded}
     reasons: list[str] = []
     for rule in PERSONALIZATION_RULES:
         if rule.factor_key not in adjusted:
@@ -80,6 +104,8 @@ def adjusted_weights(
         if rule.applies(profile):
             adjusted[rule.factor_key] *= rule.multiplier
             reasons.append(rule.reason)
+
+    reasons.extend(excluded.values())
 
     total = sum(adjusted.values())
     if total <= 0:

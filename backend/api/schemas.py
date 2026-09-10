@@ -2,12 +2,20 @@ from __future__ import annotations
 
 from pydantic import BaseModel, Field
 
+from domain.models import Religion, TransportPreference
+
 
 class UserProfileRequest(BaseModel):
     """Every field is optional and defaults to unset - personalization only kicks in
-    for the fields you actually provide."""
+    for the fields you actually provide, and each is independent of the others."""
 
     age: int | None = Field(default=None, ge=0, le=120)
+    # Narrows religious site proximity to places of worship of this faith. Values are
+    # OpenStreetMap's own religion tag values.
+    religion: Religion | None = None
+    # Narrows transport connectivity to the mode actually used. "cab" removes the
+    # factor from the composite rather than narrowing it.
+    transport_preference: TransportPreference | None = None
 
 
 class ScoreRequest(BaseModel):
@@ -38,6 +46,10 @@ class ScoreResponse(BaseModel):
     weights_used: dict[str, float]
     unverified_factors: list[str]
     personalization_applied: list[str]
+    # Factors the profile opted out of. Distinct from unverified: these were not
+    # scored because the user said they do not care, not because we could not measure
+    # them, and the frontend must not present them as a failure.
+    excluded_factors: list[str] = []
 
 
 class CompareRequest(BaseModel):

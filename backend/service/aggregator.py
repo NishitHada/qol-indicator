@@ -2,10 +2,24 @@ from __future__ import annotations
 
 import asyncio
 
+from dataclasses import dataclass
+
 from domain.models import UNVERIFIED_FLOOR_SCORE, FactorResult, FactorStatus, UserProfile
 from service import overpass_batch, personalization, vendor_fallback
-from service.overpass_categories import ALL_CATEGORIES
+from service.overpass_categories import ALL_CATEGORIES, for_profile
 from service.registry import FACTOR_REGISTRY
+
+
+@dataclass(frozen=True)
+class OverallScore:
+    """A dataclass rather than a tuple because this grew a fifth field and unpacking
+    five positional values at every call site is how the wrong one gets read."""
+
+    score: float
+    weights_used: dict[str, float]
+    unverified: list[str]
+    personalization_applied: list[str]
+    excluded: list[str]
 
 # Keys resolved via one batched Overpass call (service/overpass_batch.py) instead of
 # each firing its own independent request through vendor_fallback. Five factors each
@@ -15,17 +29,22 @@ from service.registry import FACTOR_REGISTRY
 _BATCHED_OVERPASS_KEYS = frozenset(c.key for c in ALL_CATEGORIES)
 
 
-async def compute_all(lat: float, lng: float) -> dict[str, FactorResult]:
+async def compute_all(lat: float, lng: float, profile: UserProfile | None = None) -> dict[str, FactorResult]:
     enabled_defs = [d for d in FACTOR_REGISTRY if d.enabled]
     disabled_defs = [d for d in FACTOR_REGISTRY if not d.enabled]
 
     batchable_defs = [d for d in enabled_defs if d.key in _BATCHED_OVERPASS_KEYS]
     individual_defs = [d for d in enabled_defs if d.key not in _BATCHED_OVERPASS_KEYS]
-    batch_categories = [c for c in ALL_CATEGORIES if c.key in {d.key for d in batchable_defs}]
+    # Some categories measure something different depending on the profile - religious
+    # sites become places of worship of the user's own faith. The narrowing happens
+    # here so the batched and standalone paths cannot drift apart.
+    batch_categories = [
+        for_profile(c, profile) for c in ALL_CATEGORIES if c.key in {d.key for d in batchable_defs}
+    ]
 
     batch_results, individual_results = await asyncio.gather(
         overpass_batch.compute_categories(lat, lng, batch_categories) if batch_categories else _empty(),
-        asyncio.gather(*(vendor_fallback.resolve(d, lat, lng) for d in individual_defs)),
+        asyncio.gather(*(vendor_fallback.resolve(d, lat, lng, profile) for d in individual_defs)),
     )
 
     by_key: dict[str, FactorResult] = dict(batch_results)
@@ -43,7 +62,7 @@ async def _empty() -> dict[str, FactorResult]:
 
 def compute_overall(
     factor_results: dict[str, FactorResult], profile: UserProfile | None = None
-) -> tuple[float, dict[str, float], list[str], list[str]]:
+) -> OverallScore:
     """Weighted composite over the enabled (v1) factors.
 
     With no profile (the default), weights are exactly each factor's registry weight -
@@ -59,12 +78,15 @@ def compute_overall(
     enabled_defs = [d for d in FACTOR_REGISTRY if d.enabled]
     base_weights = {d.key: d.weight for d in enabled_defs}
     weights_used, personalization_applied = personalization.adjusted_weights(base_weights, profile)
+    excluded = [d.key for d in enabled_defs if d.key not in weights_used]
 
     unverified: list[str] = []
     total = 0.0
 
     for definition in enabled_defs:
-        weight = weights_used[definition.key]
+        weight = weights_used.get(definition.key)
+        if weight is None:
+            continue  # excluded by the profile; not scored and not a gap in our data
         result = factor_results.get(definition.key)
         if result is not None and result.status == FactorStatus.OK and result.score is not None:
             total += weight * result.score
@@ -73,4 +95,10 @@ def compute_overall(
             unverified.append(definition.key)
 
     overall = round(total, 1) if enabled_defs else 0.0
-    return overall, weights_used, unverified, personalization_applied
+    return OverallScore(
+        score=overall,
+        weights_used=weights_used,
+        unverified=unverified,
+        personalization_applied=personalization_applied,
+        excluded=excluded,
+    )

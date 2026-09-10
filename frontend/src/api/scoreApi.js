@@ -1,12 +1,23 @@
 const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000'
 
-// `profile` is entirely optional - pass `{ age }` to personalize, or omit/null for
-// the default (unpersonalized) score. Only non-null fields are sent, so a partially
-// filled-out profile doesn't accidentally send `age: null` and confuse the backend.
+// `profile` is entirely optional - pass any of `{ age, religion, transportPreference }`
+// to personalize, or omit/null for the default score. Only fields that are actually
+// set are sent, so a partly filled profile never sends nulls the backend would have to
+// interpret, and an entirely empty one sends no profile at all.
+export function toProfileBody(profile) {
+  if (!profile) return null
+  const out = {}
+  if (profile.age != null) out.age = profile.age
+  if (profile.religion) out.religion = profile.religion
+  if (profile.transportPreference) out.transport_preference = profile.transportPreference
+  return Object.keys(out).length > 0 ? out : null
+}
+
 export async function fetchScore(lat, lng, profile = null) {
   const body = { lat, lng }
-  if (profile && profile.age != null) {
-    body.profile = { age: profile.age }
+  const sent = toProfileBody(profile)
+  if (sent) {
+    body.profile = sent
   }
 
   const res = await fetch(`${API_BASE}/api/score`, {
@@ -25,8 +36,9 @@ export async function fetchScore(lat, lng, profile = null) {
 // that the same answer is available to anything else built on the API later.
 export async function fetchComparison(locations, profile = null) {
   const body = { locations: locations.map(({ lat, lng }) => ({ lat, lng })) }
-  if (profile && profile.age != null) {
-    body.profile = { age: profile.age }
+  const sent = toProfileBody(profile)
+  if (sent) {
+    body.profile = sent
   }
   const res = await fetch(`${API_BASE}/api/compare`, {
     method: 'POST',
@@ -44,8 +56,9 @@ export async function fetchComparison(locations, profile = null) {
 // format rather than two that can drift apart.
 export async function createShareCode(locations, profile = null) {
   const body = { locations: locations.map(({ lat, lng }) => ({ lat, lng })) }
-  if (profile && profile.age != null) {
-    body.profile = { age: profile.age }
+  const sent = toProfileBody(profile)
+  if (sent) {
+    body.profile = sent
   }
   const res = await fetch(`${API_BASE}/api/share`, {
     method: 'POST',

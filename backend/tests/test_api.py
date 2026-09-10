@@ -36,7 +36,7 @@ def stub_scoring(monkeypatch):
     the scoring pipeline, which has its own tests and one live upstream."""
     by_point: dict[tuple[float, float], dict[str, FactorResult]] = {}
 
-    async def fake_compute_all(lat, lng):
+    async def fake_compute_all(lat, lng, profile=None):
         return by_point[(round(lat, 5), round(lng, 5))]
 
     def register(lat, lng, scores):
@@ -46,11 +46,12 @@ def stub_scoring(monkeypatch):
     monkeypatch.setattr(
         aggregator,
         "compute_overall",
-        lambda results, profile=None: (
-            round(sum(r.score or 0 for r in results.values()) / max(len(results), 1), 1),
-            {k: 1 / len(results) for k in results},
-            [k for k, r in results.items() if r.score is None],
-            [],
+        lambda results, profile=None: aggregator.OverallScore(
+            score=round(sum(r.score or 0 for r in results.values()) / max(len(results), 1), 1),
+            weights_used={k: 1 / len(results) for k in results},
+            unverified=[k for k, r in results.items() if r.score is None],
+            personalization_applied=[],
+            excluded=[],
         ),
     )
     return register

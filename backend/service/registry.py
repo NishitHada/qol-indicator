@@ -83,7 +83,7 @@ FACTOR_REGISTRY: list[FactorDefinition] = [
         "Public transport connectivity",
         0.12,
         True,
-        vendors=[VendorAdapter("osm", connectivity.compute)],
+        vendors=[VendorAdapter("osm", connectivity.compute, profile_aware=True)],
     ),
     FactorDefinition(
         "daily_essentials",

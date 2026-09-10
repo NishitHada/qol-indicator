@@ -488,3 +488,45 @@ body {
     text-align: left;
   }
 }
+
+.personalize-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+}
+
+.personalize-select {
+  flex: 1 1 auto;
+  min-width: 92px;
+  padding: 6px 8px;
+  border: 1px solid #d5d9e0;
+  border-radius: 6px;
+  font-size: 13px;
+  color: #333a45;
+  background: #fff;
+}
+
+.personalize-row {
+  flex-wrap: wrap;
+}
+
+.personalize-hint {
+  margin: 6px 0 0;
+  font-size: 11px;
+  line-height: 1.45;
+  color: #6b7280;
+}
+
+.score-panel-note-title {
+  display: block;
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+
+.personalization-reasons {
+  margin: 0;
+  padding-left: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}

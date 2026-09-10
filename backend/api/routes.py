@@ -15,7 +15,7 @@ from api.schemas import (
     ShareResponse,
     UserProfileRequest,
 )
-from domain.models import FactorResult, UserProfile
+from domain.models import FactorResult, Religion, TransportPreference, UserProfile
 from service import aggregator, comparison
 from service.share_codec import ShareCodeError, SharePayload, decode, encode
 
@@ -23,9 +23,18 @@ router = APIRouter()
 
 
 def _to_domain_profile(profile: UserProfileRequest | None) -> UserProfile | None:
-    if profile is None or profile.age is None:
+    """None when nothing was supplied, so an empty profile object from a client is
+    indistinguishable from no personalization at all."""
+    if profile is None:
         return None
-    return UserProfile(age=profile.age)
+    built = UserProfile(
+        age=profile.age,
+        religion=Religion(profile.religion) if profile.religion else None,
+        transport_preference=(
+            TransportPreference(profile.transport_preference) if profile.transport_preference else None
+        ),
+    )
+    return None if built.is_empty() else built
 
 
 def _to_factor_responses(factor_results: dict[str, FactorResult]) -> dict[str, FactorResponse]:
@@ -44,17 +53,16 @@ def _to_factor_responses(factor_results: dict[str, FactorResult]) -> dict[str, F
 
 
 async def _score_one(lat: float, lng: float, profile: UserProfile | None) -> tuple[ScoreResponse, dict[str, FactorResult]]:
-    factor_results = await aggregator.compute_all(lat, lng)
-    overall, weights_used, unverified, personalization_applied = aggregator.compute_overall(
-        factor_results, profile
-    )
+    factor_results = await aggregator.compute_all(lat, lng, profile)
+    overall = aggregator.compute_overall(factor_results, profile)
     response = ScoreResponse(
-        overall_score=overall,
+        overall_score=overall.score,
         location=LocationResponse(lat=lat, lng=lng),
         factors=_to_factor_responses(factor_results),
-        weights_used=weights_used,
-        unverified_factors=unverified,
-        personalization_applied=personalization_applied,
+        weights_used=overall.weights_used,
+        unverified_factors=overall.unverified,
+        personalization_applied=overall.personalization_applied,
+        excluded_factors=overall.excluded,
     )
     return response, factor_results
 
@@ -109,6 +117,12 @@ def create_share(request: ShareRequest) -> ShareResponse:
             SharePayload(
                 locations=[(loc.lat, loc.lng) for loc in request.locations],
                 age=profile.age if profile else None,
+                religion=profile.religion.value if profile and profile.religion else None,
+                transport_preference=(
+                    profile.transport_preference.value
+                    if profile and profile.transport_preference
+                    else None
+                ),
             )
         )
     except ShareCodeError as e:
@@ -122,7 +136,20 @@ def resolve_share(code: str) -> ShareResolveResponse:
         payload = decode(code)
     except ShareCodeError as e:
         raise HTTPException(status_code=404, detail=str(e)) from e
+    has_profile = (
+        payload.age is not None
+        or payload.religion is not None
+        or payload.transport_preference is not None
+    )
     return ShareResolveResponse(
         locations=[LocationResponse(lat=lat, lng=lng) for lat, lng in payload.locations],
-        profile=UserProfileRequest(age=payload.age) if payload.age is not None else None,
+        profile=(
+            UserProfileRequest(
+                age=payload.age,
+                religion=payload.religion,
+                transport_preference=payload.transport_preference,
+            )
+            if has_profile
+            else None
+        ),
     )

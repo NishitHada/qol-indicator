@@ -170,6 +170,12 @@ frontend puts it in the URL fragment (`#s=<code>`); opening that URL restores bo
 pins, the profile, and whichever panel was showing. A single location is 11
 characters, a two-location comparison with an age is 20.
 
+Profile fields ride along in the code too, so a shared link restores the personalization
+it was created with. Adding them meant a format change, which is what the version field
+was for: version 1 links handed out before religion and transport preference existed
+still resolve, and a test asserts it against hardcoded old codes rather than
+regenerating them.
+
 The code **carries its payload** rather than pointing at a stored row - see
 `service/share_codec.py`. That means no database to run, no cleanup job, and no link
 that stops working because a row expired or the free instance restarted and wiped its
@@ -182,8 +188,9 @@ the scoring resolves.
 
 ### Personalization (optional)
 
-`POST /api/score` accepts an optional `profile: { age }`. With no profile (or an
-empty one), the score is computed with the registry's base weights, unchanged -
+`POST /api/score` accepts an optional `profile: { age, religion, transport_preference }`.
+Every field is independent and every one is optional. With no profile (or one with
+nothing set), the score is computed with the registry's base weights, unchanged -
 personalization is opt-in, never mandatory. With a profile, `service/personalization.py`
 applies matching rules (e.g. age ≤ 30 boosts `social_hub_proximity` and
 `connectivity`; age 60+ boosts `healthcare_proximity`, `religious_site_proximity`,
@@ -195,6 +202,37 @@ lists which rules actually fired, and the frontend surfaces that as a note under
 score. The rule table is declarative and additive, the same spirit as
 `FACTOR_REGISTRY` - a new personalization dimension (e.g. `has_children`) means
 adding rules, not restructuring the aggregator.
+
+Two of the dimensions do something weight multipliers cannot express: they change what
+a factor **measures**, not how much it counts.
+
+- **`religion`** narrows religious site proximity to places of worship of that faith.
+  Values are OpenStreetMap's own `religion=*` tag values, so no translation table is
+  needed anywhere in the stack, and 96.9% of Bangalore's 3,206 mapped places of worship
+  carry the tag - which is what makes this worth doing at all. The filter requires a
+  positive tag match, so the ~3% with no tag are excluded rather than assumed to be the
+  user's faith: guessing in the user's favour is the false positive this app exists to
+  avoid, and the honest cost is occasionally missing a real site with an incomplete OSM
+  entry. Narrowing can move the score either way, because religious sites use an
+  inverted-U curve: being 18m from a temple scores worse than a mosque at 654m.
+- **`transport_preference`** (`metro` / `bus` / `cab`) narrows connectivity to the mode
+  actually used, since a metro commuter is not served by the bus stop outside their
+  door. `cab` is different again: it **excludes** the factor rather than narrowing it,
+  because someone who always takes a cab is neither served nor underserved by a nearby
+  stop. An excluded factor leaves the weight pool entirely, so the rest share the full
+  1.0, and it is reported in a separate `excluded_factors` field rather than in
+  `unverified_factors` - "you said you do not use public transport" is a choice, not a
+  gap in our data, and the UI must not present it as a failure.
+
+Note that the per-mode ceilings in `service/connectivity.py` do **not** lift for a
+stated preference. A bus stop still caps at 65 for someone who says they travel by bus,
+because the ceiling encodes what OSM can prove about service quality, and a preference
+does not change that. It is a one-line constant if that trade-off should go the other
+way.
+
+Factors that read the profile declare it on their `VendorAdapter`
+(`profile_aware=True`), so which factors respond to personalization can be read off the
+registry rather than discovered by introspection.
 
 ### Bundled data (the important one)
 

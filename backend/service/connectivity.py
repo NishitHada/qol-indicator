@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from domain.models import FactorResult, FactorStatus
+from domain.models import FactorResult, FactorStatus, TransportPreference, UserProfile
 from infra.cache import STREET_PRECISION, TTLCache, geo_cache_key
 from infra.geo import score_within_walk
 from service import osm_lookup
@@ -18,6 +18,10 @@ LABEL = "Public transport connectivity"
 @dataclass(frozen=True)
 class TransitMode:
     label: str
+    # Which stated transport preference this mode satisfies. A user who says "metro"
+    # is not served by the bus stop outside their door, so preference filtering is on
+    # this rather than on the label.
+    group: str
     tags: list[tuple[str, str]]
     full_credit_m: float
     decay_m: float
@@ -36,6 +40,7 @@ class TransitMode:
 MODES = [
     TransitMode(
         label="metro station",
+        group="metro",
         tags=[("railway", "station"), ("public_transport", "station")],
         require=("station", "subway"),
         full_credit_m=600.0,
@@ -44,6 +49,7 @@ MODES = [
     ),
     TransitMode(
         label="metro entrance",
+        group="metro",
         tags=[("railway", "subway_entrance")],
         full_credit_m=500.0,
         decay_m=800.0,
@@ -51,6 +57,7 @@ MODES = [
     ),
     TransitMode(
         label="railway station",
+        group="rail",
         tags=[("railway", "station"), ("railway", "halt")],
         exclude=("station", "subway"),
         full_credit_m=800.0,
@@ -59,6 +66,7 @@ MODES = [
     ),
     TransitMode(
         label="bus interchange",
+        group="bus",
         tags=[("public_transport", "station")],
         exclude=("station", "subway"),
         full_credit_m=500.0,
@@ -67,6 +75,7 @@ MODES = [
     ),
     TransitMode(
         label="bus stop",
+        group="bus",
         tags=[("highway", "bus_stop")],
         full_credit_m=400.0,
         decay_m=600.0,
@@ -75,6 +84,31 @@ MODES = [
 ]
 
 ALL_TAGS = sorted({tag for mode in MODES for tag in mode.tags})
+
+# Which mode groups count for each stated preference. CAB is absent on purpose: it
+# does not narrow this factor, it removes it (see service/personalization.py), because
+# someone who always takes a cab is neither served nor underserved by a nearby stop.
+PREFERRED_GROUPS = {
+    TransportPreference.METRO: {"metro"},
+    TransportPreference.BUS: {"bus"},
+}
+
+
+def modes_for(profile: UserProfile | None) -> list[TransitMode]:
+    if profile is None or profile.transport_preference is None:
+        return MODES
+    groups = PREFERRED_GROUPS.get(profile.transport_preference)
+    if groups is None:
+        return MODES
+    return [mode for mode in MODES if mode.group in groups]
+
+
+def _described(modes: list[TransitMode]) -> str:
+    """What we actually looked for, so a metro user is not told there is 'no transit'
+    when the street is lined with bus stops."""
+    if modes is MODES:
+        return "bus, metro or rail stop"
+    return " or ".join(sorted({mode.group for mode in modes})) + " stop"
 
 
 def _mode_elements(mode: TransitMode, elements: list[dict]) -> list[dict]:
@@ -91,14 +125,20 @@ def _mode_elements(mode: TransitMode, elements: list[dict]) -> list[dict]:
     return out
 
 
-async def compute(lat: float, lng: float) -> FactorResult:
-    cache_key = geo_cache_key(lat, lng, precision=STREET_PRECISION)
+async def compute(lat: float, lng: float, profile: UserProfile | None = None) -> FactorResult:
+    modes = modes_for(profile)
+    preference = profile.transport_preference.value if profile and profile.transport_preference else "any"
+    # The preference is part of the key: the same point scores differently for a metro
+    # user than for a bus user, and serving one the other's cached answer is exactly
+    # the class of bug the cache-precision work already had to fix once.
+    cache_key = f"{preference}:{geo_cache_key(lat, lng, precision=STREET_PRECISION)}"
     cached = _cache.get(cache_key)
     if cached is not None:
         return cached
 
     try:
-        elements = await osm_lookup.nearby(lat, lng, ALL_TAGS, SEARCH_RADIUS_M)
+        wanted_tags = sorted({tag for mode in modes for tag in mode.tags})
+        elements = await osm_lookup.nearby(lat, lng, wanted_tags, SEARCH_RADIUS_M)
     except Exception as e:
         return FactorResult(
             key=KEY,
@@ -111,7 +151,7 @@ async def compute(lat: float, lng: float) -> FactorResult:
         )
 
     best: tuple[float, float, str] | None = None  # (score, distance, detail)
-    for mode in MODES:
+    for mode in modes:
         found = osm_lookup.nearest(lat, lng, _mode_elements(mode, elements))
         if found is None:
             continue
@@ -133,7 +173,9 @@ async def compute(lat: float, lng: float) -> FactorResult:
             unit=None,
             status=FactorStatus.OK,
             source="osm",
-            detail=f"No bus, metro or rail stop mapped within {SEARCH_RADIUS_M}m",
+            detail=(
+                f"No {_described(modes)} mapped within {SEARCH_RADIUS_M}m"
+            ),
         )
         _cache.set(cache_key, result)
         return result

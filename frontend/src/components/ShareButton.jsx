@@ -6,14 +6,14 @@ export function buildShareUrl(code) {
   return `${origin}${pathname}#s=${code}`
 }
 
-export default function ShareButton({ locations, age, disabled }) {
+export default function ShareButton({ locations, profile, disabled }) {
   const [state, setState] = useState('idle')
   const [url, setUrl] = useState(null)
 
   const handleShare = useCallback(async () => {
     setState('working')
     try {
-      const code = await createShareCode(locations, { age })
+      const code = await createShareCode(locations, profile)
       const shareUrl = buildShareUrl(code)
       setUrl(shareUrl)
       try {
@@ -28,7 +28,7 @@ export default function ShareButton({ locations, age, disabled }) {
     } catch {
       setState('error')
     }
-  }, [locations, age])
+  }, [locations, profile])
 
   return (
     <div className="share-box">

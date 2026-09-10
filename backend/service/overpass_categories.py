@@ -1,5 +1,9 @@
 from __future__ import annotations
 
+import dataclasses
+
+from domain.models import UserProfile
+
 from infra.geo import score_from_distance_decay, score_sweet_spot
 from service.overpass_batch import ProximityCategory
 
@@ -70,3 +74,23 @@ RELIGIOUS_SITE = ProximityCategory(
 # The set the aggregator batches together into as few Overpass calls as possible -
 # see service/aggregator.py. Keep this in sync with FACTOR_REGISTRY's enabled keys.
 ALL_CATEGORIES = [GREENERY, WATER, HEALTHCARE, SOCIAL_HUB, RELIGIOUS_SITE]
+
+
+def for_profile(category: ProximityCategory, profile: UserProfile | None) -> ProximityCategory:
+    """A copy of `category` narrowed to what this profile actually cares about.
+
+    Only religious sites vary today. The filter deliberately requires a positive tag
+    match, so the ~3% of places of worship with no `religion` tag are excluded rather
+    than assumed to be the user's faith - guessing would be the false positive this
+    app is built to avoid, and the honest cost is that a genuinely nearby temple with
+    an incomplete OSM entry is missed.
+    """
+    if profile is None or profile.religion is None or category.key != RELIGIOUS_SITE.key:
+        return category
+
+    faith = profile.religion.value
+    return dataclasses.replace(
+        category,
+        element_filter=lambda el: el.get("tags", {}).get("religion") == faith,
+        subject=f"{faith} place of worship",
+    )

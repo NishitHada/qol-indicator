@@ -4,8 +4,20 @@ function bandColor(score) {
   return '#4caf7d'
 }
 
-export default function FactorCard({ factor }) {
+export default function FactorCard({ factor, excluded = false }) {
   const { label, score, raw_value: rawValue, unit, status, detail } = factor
+
+  // Deliberately checked before status. An excluded factor may well have resolved
+  // fine; it is not counted because the user said it does not apply to them, and
+  // showing it as a score would imply it fed into the total.
+  if (excluded) {
+    return (
+      <div className="factor-card factor-card-stub">
+        <span className="factor-card-label">{label}</span>
+        <span className="factor-card-badge">Not counted for you</span>
+      </div>
+    )
+  }
 
   if (status === 'coming_soon') {
     return (

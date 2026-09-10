@@ -93,9 +93,71 @@ def test_a_future_version_is_refused_by_name():
 
     original = share_codec.VERSION
     try:
-        share_codec.VERSION = 2
+        share_codec.VERSION = 9
         future = encode(SharePayload(locations=[BLR]))
     finally:
         share_codec.VERSION = original
-    with pytest.raises(ShareCodeError, match="version 2"):
+    with pytest.raises(ShareCodeError, match="version 9"):
         decode(future)
+
+
+# Codes handed out before religion and transport preference existed. Hardcoded rather
+# than regenerated, because the point is that bytes produced by the *old* encoder still
+# decode - a test that re-encodes with today's code would prove nothing.
+V1_SINGLE = "BEJ0fSGJEsw"
+V1_TWO_WITH_AGE = "EanTNcYkHoE6PIjEg9BE"
+
+
+def test_version_1_links_still_resolve():
+    single = decode(V1_SINGLE)
+    assert single.locations == [BLR]
+    assert single.age is None
+
+    both = decode(V1_TWO_WITH_AGE)
+    assert both.locations == [(13.023, 77.576), (12.969, 77.576)]
+    assert both.age == 68
+
+
+def test_version_1_links_decode_with_the_new_fields_empty():
+    """Not just "does not crash" - an old link must not acquire a faith or a travel
+    preference its author never set."""
+    payload = decode(V1_TWO_WITH_AGE)
+    assert payload.religion is None
+    assert payload.transport_preference is None
+
+
+def test_religion_and_transport_round_trip():
+    payload = SharePayload(
+        locations=[BLR], age=68, religion="jain", transport_preference="metro"
+    )
+    decoded = decode(encode(payload))
+    assert decoded.religion == "jain"
+    assert decoded.transport_preference == "metro"
+    assert decoded.age == 68
+
+
+def test_each_profile_field_is_independent():
+    only_religion = decode(encode(SharePayload(locations=[BLR], religion="sikh")))
+    assert only_religion.religion == "sikh"
+    assert only_religion.age is None and only_religion.transport_preference is None
+
+    only_transport = decode(encode(SharePayload(locations=[BLR], transport_preference="cab")))
+    assert only_transport.transport_preference == "cab"
+    assert only_transport.age is None and only_transport.religion is None
+
+
+def test_every_religion_and_transport_value_round_trips():
+    """These are index-encoded, so a reordering of the tables would silently change
+    what existing links mean."""
+    from domain.models import Religion, TransportPreference
+
+    for religion in Religion:
+        assert decode(encode(SharePayload(locations=[BLR], religion=religion.value))).religion == religion.value
+    for preference in TransportPreference:
+        decoded = decode(encode(SharePayload(locations=[BLR], transport_preference=preference.value)))
+        assert decoded.transport_preference == preference.value
+
+
+def test_an_unknown_religion_is_refused_rather_than_silently_dropped():
+    with pytest.raises(ShareCodeError, match="religion"):
+        encode(SharePayload(locations=[BLR], religion="pastafarian"))

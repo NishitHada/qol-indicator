@@ -2,14 +2,22 @@ from __future__ import annotations
 
 import dataclasses
 
-from domain.models import FactorDefinition, FactorResult, FactorStatus
+from domain.models import FactorDefinition, FactorResult, FactorStatus, UserProfile
 
 
-async def resolve(definition: FactorDefinition, lat: float, lng: float) -> FactorResult:
+async def resolve(
+    definition: FactorDefinition, lat: float, lng: float, profile: UserProfile | None = None
+) -> FactorResult:
     last_error: Exception | str | None = None
     for vendor in definition.vendors:
         try:
-            result = await vendor.compute(lat, lng)
+            # Vendors declare whether they read the profile, so a factor that measures
+            # something different per profile gets it and the other twelve keep their
+            # simpler signature.
+            if vendor.profile_aware:
+                result = await vendor.compute(lat, lng, profile)
+            else:
+                result = await vendor.compute(lat, lng)
         except Exception as e:
             last_error = e
             continue

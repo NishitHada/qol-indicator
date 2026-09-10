@@ -50,6 +50,24 @@ class ProximityCategory:
     fallback_radius_m: int = 8000
     name_tag_keys: tuple[str, ...] = ("name",)
     cache_ttl_s: float = 86400
+    # Narrows the matched features further than `tags` can. Applied after fetching, so
+    # a filtered variant of a category still reuses the same cached elements rather
+    # than issuing its own query - which matters because the filter is per-user (see
+    # overpass_categories.for_profile) and the cache is not.
+    element_filter: Callable[[dict], bool] | None = None
+    # What the filter narrowed to, for the "nothing found" message. Without this a
+    # Jain user searching a Hindu-majority area is told "no religious site nearby",
+    # which is both wrong and unhelpful.
+    subject: str | None = None
+
+    def matching(self, elements: list[dict]) -> list[dict]:
+        if self.element_filter is None:
+            return elements
+        return [el for el in elements if self.element_filter(el)]
+
+    @property
+    def described(self) -> str:
+        return self.subject or self.label.lower()
 
 
 # category key -> TTLCache of cell key -> raw element list
@@ -210,7 +228,7 @@ def _not_found_result(cat: ProximityCategory) -> FactorResult:
         unit=None,
         status=FactorStatus.NOT_FOUND,
         source="osm-overpass",
-        detail=f"No {cat.label.lower()} found within {cat.fallback_radius_m}m",
+        detail=f"No {cat.described} found within {cat.fallback_radius_m}m",
     )
 
 
@@ -285,7 +303,7 @@ async def compute_categories(lat: float, lng: float, categories: list[ProximityC
     for cat in categories:
         if cat.key in results:  # errored above
             continue
-        found = _nearest(lat, lng, elements_by_category.get(cat.key, []))
+        found = _nearest(lat, lng, cat.matching(elements_by_category.get(cat.key, [])))
         if found is None and not use_local:
             # Nothing in this cell's cached features - widen to a point-centred query
             # at this category's fallback radius before giving up. Skipped when the
@@ -294,7 +312,9 @@ async def compute_categories(lat: float, lng: float, categories: list[ProximityC
             # reason to spend 90s failing over mirrors.
             try:
                 fallback_elements = await _post(_build_around_query(lat, lng, cat, cat.fallback_radius_m))
-                found = _nearest(lat, lng, [el for el in fallback_elements if _matches(el, cat.tags)])
+                found = _nearest(
+                    lat, lng, cat.matching([el for el in fallback_elements if _matches(el, cat.tags)])
+                )
             except Exception:
                 found = None
         results[cat.key] = _to_result(cat, found) if found is not None else _not_found_result(cat)

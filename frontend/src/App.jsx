@@ -25,17 +25,17 @@ export default function App() {
   const [compareData, setCompareData] = useState(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
-  const [age, setAge] = useState(null)
+  const [profile, setProfile] = useState({ age: null, religion: null, transportPreference: null })
 
-  const run = useCallback(async (points, currentAge, comparing) => {
+  const run = useCallback(async (points, currentProfile, comparing) => {
     if (points.length === 0 || (comparing && points.length < 2)) return
     setLoading(true)
     setError(null)
     try {
       if (comparing) {
-        setCompareData(await fetchComparison(points, { age: currentAge }))
+        setCompareData(await fetchComparison(points, currentProfile))
       } else {
-        setScoreData(await fetchScore(points[0].lat, points[0].lng, { age: currentAge }))
+        setScoreData(await fetchScore(points[0].lat, points[0].lng, currentProfile))
       }
     } catch {
       setError('Could not fetch a score for this location. Is the backend running?')
@@ -53,7 +53,7 @@ export default function App() {
       if (!compareMode) {
         setLocations([point])
         setScoreData(null)
-        run([point], age, false)
+        run([point], profile, false)
         return
       }
 
@@ -67,16 +67,16 @@ export default function App() {
         setActiveSlot(1)
       }
       if (next[0] && next[1]) {
-        run(next, age, true)
+        run(next, profile, true)
       }
     },
-    [age, activeSlot, compareMode, locations, run],
+    [profile, activeSlot, compareMode, locations, run],
   )
 
-  const handleAgeChange = useCallback(
-    (newAge) => {
-      setAge(newAge)
-      run(locations, newAge, compareMode)
+  const handleProfileChange = useCallback(
+    (next) => {
+      setProfile(next)
+      run(locations.filter(Boolean), next, compareMode)
     },
     [locations, compareMode, run],
   )
@@ -92,8 +92,8 @@ export default function App() {
     setActiveSlot(0)
     setCompareData(null)
     setLocations((current) => current.slice(0, 1))
-    if (locations[0]) run([locations[0]], age, false)
-  }, [locations, age, run])
+    if (locations[0]) run([locations[0]], profile, false)
+  }, [locations, profile, run])
 
   // A shared link restores the whole view: both pins, the profile, and which panel to
   // show. Runs once - after that the hash is just history, and re-reading it would
@@ -108,14 +108,18 @@ export default function App() {
       try {
         const payload = await resolveShareCode(code)
         const points = payload.locations.map(({ lat, lng }) => ({ lat, lng }))
-        const sharedAge = payload.profile?.age ?? null
+        const sharedProfile = {
+          age: payload.profile?.age ?? null,
+          religion: payload.profile?.religion ?? null,
+          transportPreference: payload.profile?.transport_preference ?? null,
+        }
         const comparing = points.length > 1
         setLocations(points)
-        setAge(sharedAge)
+        setProfile(sharedProfile)
         setCompareMode(comparing)
         setActiveSlot(comparing ? 1 : 0)
         setFocus(points)
-        run(points, sharedAge, comparing)
+        run(points, sharedProfile, comparing)
       } catch {
         setError('That share link could not be opened.')
       }
@@ -143,7 +147,7 @@ export default function App() {
           />
         </div>
         <div className="app-panel-pane">
-          <PersonalizePanel age={age} onAgeChange={handleAgeChange} />
+          <PersonalizePanel profile={profile} onChange={handleProfileChange} />
 
           {compareMode && (
             <div className="compare-controls">
@@ -184,7 +188,7 @@ export default function App() {
           {hasSomethingToShare && (
             <ShareButton
               locations={locations.filter(Boolean)}
-              age={age}
+              profile={profile}
               disabled={compareMode && locations.filter(Boolean).length < 2}
             />
           )}

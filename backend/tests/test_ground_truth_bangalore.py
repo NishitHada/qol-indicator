@@ -177,9 +177,9 @@ async def test_every_factor_resolves_for_a_real_address(place: str):
     network call. Anything unverified here other than live air quality is a regression
     in the bundle, not a property of the location."""
     factors = await _factors(place)
-    _, weights, unverified, _ = aggregator.compute_overall(factors)
-    assert set(unverified) <= LIVE_FACTORS, f"{place} left {unverified} unverified"
-    assert len(weights) == 14
+    overall = aggregator.compute_overall(factors)
+    assert set(overall.unverified) <= LIVE_FACTORS, f"{place} left {overall.unverified} unverified"
+    assert len(overall.weights_used) == 14
 
 
 @pytest.mark.parametrize("place", list(PLACES))
@@ -215,6 +215,6 @@ async def test_nearby_but_distinct_places_do_not_share_a_cached_answer():
 
 async def test_the_city_centre_outranks_the_rural_edge_overall():
     """The composite is the product, so it gets an end-to-end assertion of its own."""
-    centre, _, _, _ = aggregator.compute_overall(await _factors("mg_road"))
-    edge, _, _, _ = aggregator.compute_overall(await _factors("rural_edge"))
-    assert centre > edge
+    centre = aggregator.compute_overall(await _factors("mg_road"))
+    edge = aggregator.compute_overall(await _factors("rural_edge"))
+    assert centre.score > edge.score
