@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from domain.models import FactorResult, FactorStatus
-from infra.cache import TTLCache, geo_cache_key
+from infra.cache import STREET_PRECISION, TTLCache, geo_cache_key
 from infra.geo import score_within_walk
 from service import osm_lookup
 
@@ -63,7 +63,7 @@ ALL_TAGS = sorted({tag for group in GROUPS for tag in group.tags})
 
 
 async def compute(lat: float, lng: float) -> FactorResult:
-    cache_key = geo_cache_key(lat, lng)
+    cache_key = geo_cache_key(lat, lng, precision=STREET_PRECISION)
     cached = _cache.get(cache_key)
     if cached is not None:
         return cached

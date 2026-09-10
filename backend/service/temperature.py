@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import date, timedelta
 
 from domain.models import FactorResult, FactorStatus
-from infra.cache import TTLCache, geo_cache_key
+from infra.cache import REGIONAL_PRECISION, TTLCache, geo_cache_key
 from infra.http_client import get_client
 from service import local_climate
 
@@ -58,7 +58,7 @@ async def compute(lat: float, lng: float) -> FactorResult:
     # the ERA5 reanalysis, whose own grid is coarser still (25-40km), so a finer cache key
     # just multiplies identical upstream requests - which is what got this
     # endpoint rate-limited (429) in production.
-    cache_key = geo_cache_key(lat, lng, precision=1)
+    cache_key = geo_cache_key(lat, lng, precision=REGIONAL_PRECISION)
     cached = _cache.get(cache_key)
     if cached is not None:
         return cached

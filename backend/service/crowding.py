@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from domain.models import FactorResult, FactorStatus
-from infra.cache import TTLCache, geo_cache_key
+from infra.cache import STREET_PRECISION, TTLCache, geo_cache_key
 from service import local_buildings
 
 _cache = TTLCache(ttl_seconds=86400)
@@ -30,7 +30,7 @@ def _score_from_coverage(coverage_pct: float) -> float:
 
 
 async def compute(lat: float, lng: float) -> FactorResult:
-    cache_key = geo_cache_key(lat, lng)
+    cache_key = geo_cache_key(lat, lng, precision=STREET_PRECISION)
     cached = _cache.get(cache_key)
     if cached is not None:
         return cached

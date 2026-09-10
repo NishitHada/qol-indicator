@@ -114,10 +114,17 @@ is a fine source, just not for this city:
 
 ## Not data — product work
 
-- **Ground-truth regression fixtures.** Roughly ten Bangalore locations with a
-  hand-written expected range per factor, so a scoring-curve change that silently
-  breaks a factor fails a test instead of shipping. This is the single highest-value
-  item on this page.
+- **More ground-truth fixtures.** `backend/tests/test_ground_truth_bangalore.py` now
+  pins 16 Bangalore locations, with relative orderings preferred over absolute values
+  so a threshold tweak does not cause a false alarm. Seven injected regressions were
+  all caught. Worth extending whenever a factor is added or a scoring curve changes;
+  the two tables at the top of that file are the only things to edit.
+- **Noise does not model street-level congestion.** Chickpet scores 96 and Peenya 100,
+  meaning "quiet", because `noise_sources` only sees motorway/trunk/primary roads and
+  airports. Both are in reality loud, from traffic on smaller streets and from horns
+  and crowds. This is a false positive in the direction the scoring philosophy cares
+  most about, so it is worth fixing. TomTom live traffic flow, already listed below,
+  is the obvious vendor.
 - **Commute time to a named work address** — extends `connectivity` from "is there
   transit" to "how long to your office". Needs a routing API (OpenRouteService has a
   free tier). This is also a prerequisite for Phase 1's natural-language queries.

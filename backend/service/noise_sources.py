@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from domain.models import FactorResult, FactorStatus
-from infra.cache import TTLCache, geo_cache_key
+from infra.cache import STREET_PRECISION, TTLCache, geo_cache_key
 from infra.geo import score_from_distance_decay
 from infra.http_client import get_client
 from service import osm_lookup
@@ -73,7 +73,7 @@ async def _nearby_low_altitude_flight(lat: float, lng: float) -> tuple[float, di
 
 
 async def compute(lat: float, lng: float) -> FactorResult:
-    cache_key = geo_cache_key(lat, lng)
+    cache_key = geo_cache_key(lat, lng, precision=STREET_PRECISION)
     cached = _cache.get(cache_key)
     if cached is not None:
         return cached

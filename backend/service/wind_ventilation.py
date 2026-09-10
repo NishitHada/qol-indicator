@@ -4,7 +4,7 @@ import math
 from datetime import date, timedelta
 
 from domain.models import FactorResult, FactorStatus
-from infra.cache import TTLCache, geo_cache_key
+from infra.cache import REGIONAL_PRECISION, TTLCache, geo_cache_key
 from infra.http_client import get_client
 from service import local_climate
 
@@ -86,7 +86,7 @@ async def _fetch_series(lat: float, lng: float) -> tuple[list, list]:
 async def compute(lat: float, lng: float) -> FactorResult:
     # ~11km buckets, matching temperature: this reads the same ERA5 reanalysis, whose
     # own grid is coarser still, so a finer key would only multiply identical requests.
-    cache_key = geo_cache_key(lat, lng, precision=1)
+    cache_key = geo_cache_key(lat, lng, precision=REGIONAL_PRECISION)
     cached = _cache.get(cache_key)
     if cached is not None:
         return cached

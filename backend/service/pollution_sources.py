@@ -4,7 +4,7 @@ import math
 from dataclasses import dataclass
 
 from domain.models import FactorResult, FactorStatus
-from infra.cache import TTLCache, geo_cache_key
+from infra.cache import STREET_PRECISION, TTLCache, geo_cache_key
 from infra.geo import haversine_m, score_from_distance_decay
 from service import osm_lookup
 
@@ -93,7 +93,7 @@ _ALL_TAGS = sorted({tag for n in AIRBORNE + ODOUR for tag in n.tags})
 
 
 async def _compute(lat: float, lng: float, key: str, label: str, nuisances: list[Nuisance]) -> FactorResult:
-    cache_key = f"{key}:{geo_cache_key(lat, lng)}"
+    cache_key = f"{key}:{geo_cache_key(lat, lng, precision=STREET_PRECISION)}"
     cached = _cache.get(cache_key)
     if cached is not None:
         return cached
