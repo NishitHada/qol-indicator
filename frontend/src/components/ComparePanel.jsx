@@ -13,7 +13,8 @@ function Verdict({ winner, difference, slotCount }) {
   }
   return (
     <span className="compare-verdict" data-slot={SLOT_NAMES[winner]}>
-      {slotCount > 2 ? SLOT_NAMES[winner] : `${SLOT_NAMES[winner]} wins`} +{difference}
+      {SLOT_NAMES[winner]}
+      {slotCount === 2 && <span className="compare-verdict-verb"> wins</span>} +{difference}
     </span>
   )
 }
