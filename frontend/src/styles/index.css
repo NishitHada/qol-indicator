@@ -277,3 +277,214 @@ body {
   background: #eef2fb;
   color: #4a5b8c;
 }
+
+/* --- Compare mode --------------------------------------------------------- */
+
+.compare-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.slot-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  border: 1px solid #d5d9e0;
+  border-radius: 999px;
+  background: #fff;
+  font-size: 12px;
+  color: #444c58;
+  cursor: pointer;
+}
+
+.slot-chip-active {
+  border-color: #4a6cf7;
+  box-shadow: 0 0 0 2px rgba(74, 108, 247, 0.15);
+}
+
+.compare-pin {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  background: #4a6cf7;
+}
+
+.compare-pin[data-slot='B'] {
+  background: #e07a3f;
+}
+
+.compare-exit,
+.compare-start {
+  padding: 6px 10px;
+  border: 1px solid #d5d9e0;
+  border-radius: 6px;
+  background: #fff;
+  font-size: 12px;
+  color: #444c58;
+  cursor: pointer;
+}
+
+.compare-start {
+  width: 100%;
+  margin-top: 10px;
+  padding: 9px 10px;
+}
+
+.compare-headline {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.compare-column {
+  padding: 10px;
+  border: 1px solid #e6e9ee;
+  border-radius: 8px;
+}
+
+.compare-column-winner {
+  border-color: #4caf7d;
+  background: rgba(76, 175, 125, 0.06);
+}
+
+.compare-column-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: #6b7280;
+  margin-bottom: 6px;
+}
+
+.compare-table {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-top: 10px;
+}
+
+.compare-row {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  gap: 10px;
+  align-items: center;
+  padding: 7px 8px;
+  border-radius: 6px;
+}
+
+.compare-row:nth-child(odd) {
+  background: #fafbfc;
+}
+
+.compare-row-label {
+  font-size: 13px;
+  color: #333a45;
+}
+
+.compare-row-scores {
+  display: inline-flex;
+  gap: 6px;
+}
+
+.compare-cell {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 34px;
+  padding: 2px 6px;
+  border-radius: 5px;
+  background: #eef0f4;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+  color: #444c58;
+}
+
+.compare-cell-winner {
+  background: rgba(76, 175, 125, 0.18);
+  color: #2f7d55;
+  font-weight: 600;
+}
+
+.compare-cell-missing {
+  color: #9aa2ae;
+}
+
+.compare-verdict {
+  min-width: 92px;
+  text-align: right;
+  font-size: 11px;
+  color: #4a6cf7;
+  font-variant-numeric: tabular-nums;
+}
+
+.compare-verdict[data-slot='B'] {
+  color: #e07a3f;
+}
+
+.compare-verdict-tie {
+  color: #9aa2ae;
+}
+
+/* --- Sharing -------------------------------------------------------------- */
+
+.share-box {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 12px;
+}
+
+.share-button {
+  padding: 9px 10px;
+  border: 1px solid #4a6cf7;
+  border-radius: 6px;
+  background: #4a6cf7;
+  color: #fff;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.share-button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.share-url {
+  padding: 7px 8px;
+  border: 1px solid #d5d9e0;
+  border-radius: 6px;
+  font-size: 12px;
+  color: #444c58;
+  background: #fafbfc;
+}
+
+.share-hint-error {
+  font-size: 12px;
+  color: #c0392b;
+}
+
+@media (max-width: 640px) {
+  .compare-headline {
+    grid-template-columns: 1fr;
+  }
+
+  .compare-row {
+    grid-template-columns: 1fr auto;
+  }
+
+  .compare-verdict {
+    grid-column: 1 / -1;
+    text-align: left;
+  }
+}

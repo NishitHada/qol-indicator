@@ -5,7 +5,7 @@ const LIBRARIES = ['places']
 const DEFAULT_CENTER = { lat: 40.7829, lng: -73.9654 } // Central Park, NYC - fallback if geolocation is denied/unavailable
 const MAP_CONTAINER_STYLE = { width: '100%', height: '100%' }
 
-export default function MapView({ onLocationSelect, selectedLocation }) {
+export default function MapView({ onLocationSelect, markers = [], markerLabels = null, focusLocations = null }) {
   const { isLoaded, loadError } = useJsApiLoader({
     googleMapsApiKey: import.meta.env.VITE_GOOGLE_MAPS_API_KEY,
     libraries: LIBRARIES,
@@ -13,6 +13,7 @@ export default function MapView({ onLocationSelect, selectedLocation }) {
   const [center, setCenter] = useState(DEFAULT_CENTER)
   const [zoom, setZoom] = useState(13)
   const searchBoxRef = useRef(null)
+  const mapRef = useRef(null)
   // The autocomplete element below is imperatively created once and never torn down,
   // so its handlers read onLocationSelect through this ref (always current) instead of
   // depending on the prop's identity directly - that identity changes on every
@@ -22,6 +23,25 @@ export default function MapView({ onLocationSelect, selectedLocation }) {
   useEffect(() => {
     onLocationSelectRef.current = onLocationSelect
   }, [onLocationSelect])
+
+  // Opening a shared link has to move the map to the shared place. Map clicks
+  // deliberately do not recenter - the pin lands where you clicked and the view stays
+  // put - so this is driven by an explicit prop rather than by the marker list.
+  //
+  // A shared comparison has two pins, and centring on the first would leave the second
+  // off screen, which rather defeats the point of sharing a comparison. So one
+  // location centres and several are framed together.
+  useEffect(() => {
+    if (!focusLocations || focusLocations.length === 0) return
+    if (focusLocations.length === 1 || !mapRef.current) {
+      setCenter({ lat: focusLocations[0].lat, lng: focusLocations[0].lng })
+      setZoom(15)
+      return
+    }
+    const bounds = new google.maps.LatLngBounds()
+    focusLocations.forEach((point) => bounds.extend(point))
+    mapRef.current.fitBounds(bounds, 64)
+  }, [focusLocations])
 
   useEffect(() => {
     if (!navigator.geolocation) return
@@ -120,8 +140,25 @@ export default function MapView({ onLocationSelect, selectedLocation }) {
   return (
     <div className="map-view">
       <div className="map-search-box" ref={searchBoxRef} />
-      <GoogleMap mapContainerStyle={MAP_CONTAINER_STYLE} center={center} zoom={zoom} onClick={handleMapClick}>
-        {selectedLocation && <Marker position={selectedLocation} />}
+      <GoogleMap
+        mapContainerStyle={MAP_CONTAINER_STYLE}
+        center={center}
+        zoom={zoom}
+        onClick={handleMapClick}
+        onLoad={(map) => {
+          mapRef.current = map
+        }}
+      >
+        {markers.map(
+          (marker, index) =>
+            marker && (
+              <Marker
+                key={index}
+                position={marker}
+                label={markerLabels ? { text: markerLabels[index], color: '#ffffff', fontWeight: '700' } : undefined}
+              />
+            ),
+        )}
       </GoogleMap>
     </div>
   )

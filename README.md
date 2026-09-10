@@ -7,9 +7,16 @@ score plus a factor-by-factor breakdown for that location.
 
 ```
 frontend/ (React + Vite, Google Maps)          backend/ (FastAPI)
-  MapView ──click / address search──►  POST /api/score {lat, lng, profile?}
+  MapView ──click / address search──►  POST /api/score   {lat, lng, profile?}
   ScorePanel ◄──────────────────────  {overall_score, factors{}, weights_used,
                                         unverified_factors, personalization_applied}
+
+  MapView (pins A + B) ────────────►  POST /api/compare {locations[2-4], profile?}
+  ComparePanel ◄───────────────────── {locations[], overall_winner, factors{winner,
+                                        difference, scores[]}}
+
+  ShareButton ─────────────────────►  POST /api/share   {locations[], profile?} -> code
+  #s=<code> on load ───────────────►  GET  /api/share/{code} -> {locations, profile}
 ```
 
 Inside the backend, one request fans out like this:
@@ -138,6 +145,40 @@ implemented without touching the aggregator or the frontend: crime rate, localit
 premium-ness, road quality, drinking water, electricity availability, and price per m².
 **[TODO.md](TODO.md) says what data each one is waiting on and how to get access**,
 including which sources were surveyed and rejected, and why.
+
+### Comparing two locations
+
+`POST /api/compare` scores two to four locations under one profile and reports, per
+factor, who wins and by how much. The comparison is computed in
+`service/comparison.py` rather than in the frontend, so the same verdict is available
+to anything else built on the API later, and each location is scored by the exact path
+`/api/score` uses, so a comparison can never disagree with the individual scores a
+user might open alongside it.
+
+Two judgment calls in there are worth knowing about. A gap at or under
+`TIE_THRESHOLD` (0.5, one step above the reported precision) is "too close to call"
+rather than a win, because declaring a winner by a tenth of a point is exactly the
+false precision the rest of the scoring avoids. And a factor that resolved for one
+location but not the other has *no* winner: not knowing what B would have scored is
+not the same as B scoring badly, so handing the win to whoever happened to have data
+would invent a result. The UI shows those two cases differently.
+
+### Sharing a view
+
+`POST /api/share` packs the current locations and profile into a short code, and the
+frontend puts it in the URL fragment (`#s=<code>`); opening that URL restores both
+pins, the profile, and whichever panel was showing. A single location is 11
+characters, a two-location comparison with an age is 20.
+
+The code **carries its payload** rather than pointing at a stored row - see
+`service/share_codec.py`. That means no database to run, no cleanup job, and no link
+that stops working because a row expired or the free instance restarted and wiped its
+disk. It also makes the code deterministic: the same view always produces the same
+link. The format has a version field, so a future change adds a branch rather than
+silently decoding old links into the wrong coordinates.
+
+Coordinates are stored to five decimal places (~1.1m), which is finer than anything
+the scoring resolves.
 
 ### Personalization (optional)
 
