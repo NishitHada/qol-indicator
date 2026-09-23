@@ -112,6 +112,60 @@ is a fine source, just not for this city:
 - **GBFS bikeshare feeds** — checked the official system registry: **zero GBFS systems
   exist in India**. Blocked, not deprioritised.
 
+## Measured: a quarter of the weight does almost none of the work
+
+Sampled 40 points across built-up Bangalore (12.88–13.08 N, 77.50–77.72 E) and compared
+each factor's spread against its weight:
+
+| Factor | Weight | Range across the city | Share of the score's discriminating power |
+|---|---|---|---|
+| Connectivity | 0.12 | 21–100 | 15.6% |
+| Crowding | 0.06 | 0–100 | 13.8% |
+| Noise sources | 0.09 | 23–100 | 13.3% |
+| Daily essentials | 0.10 | 26–100 | 12.9% |
+| Greenery | 0.09 | 3–88 | 11.9% |
+| **Air quality** | **0.14** | **41–44** | **1.4%** |
+| **Temperature** | **0.07** | 81–93 | **1.2%** |
+| **Wind / ventilation** | **0.04** | 83–95 | **0.9%** |
+
+Air quality is the single heaviest-weighted factor and it moves the score by three
+points across the whole city. The cause is resolution, not a bug: CAMS runs on roughly
+a 40km grid and ERA5 on 25km, while Bangalore is about 40km across, so neither source
+can physically resolve within-city variation.
+
+**Two separate questions are being conflated.** "How much does air quality matter to
+quality of life" deserves 14%. "How much should air quality distinguish two Bangalore
+addresses" is near zero, because it is the same air. Fixes, in order:
+
+1. Report the city-level readings (air quality, temperature, wind) as a **city
+   baseline** shown separately, so the per-address score is built from what actually
+   varies by address. This alone makes the composite far more informative and costs no
+   new data.
+2. Add CPCB ground-station air quality via OpenAQ (Tier 2 above) so the factor becomes
+   a location signal rather than a constant. Peenya and Sadashivanagar genuinely
+   differ; only ground stations show it.
+3. Revisit the weights afterwards. A factor's weight should reflect both how much it
+   matters *and* whether it can discriminate at the scale we score at.
+
+## The weights are unvalidated, and the fix already exists
+
+The product's central claim is a confident 0–100 number, and its most important
+parameters were chosen by judgment with no empirical grounding. The comparison feature
+is the instrument that fixes this: a pairwise comparison is the standard input to
+fitting a preference model. Logging which location a user picks after seeing a
+comparison lets the weights be fitted to revealed preference instead of to one
+person's intuition. Worth doing before adding any more factors.
+
+## Noise breaks the scoring philosophy
+
+`noise_sources` sees only motorway/trunk/primary roads and airports, so street-level
+congestion and horn noise are invisible. Chickpet scores 96 for quietness and Peenya
+100; both are loud in reality. This is a false positive in exactly the direction the
+approval-board principle forbids, and it is currently the clearest case of the app
+telling someone a place is better than they will find it. TomTom live traffic flow,
+listed under "surveyed and rejected" above, is the obvious vendor and only needs a
+free key.
+
 ## Not data — product work
 
 - **More ground-truth fixtures.** `backend/tests/test_ground_truth_bangalore.py` now
@@ -128,6 +182,9 @@ is a fine source, just not for this city:
 - **Commute time to a named work address** — extends `connectivity` from "is there
   transit" to "how long to your office". Needs a routing API (OpenRouteService has a
   free tier). This is also a prerequisite for Phase 1's natural-language queries.
+- **Take an address or a listing link as input**, not a map click. Nobody deciding on
+  a flat starts from a pin. The Places autocomplete already exists; the missing piece
+  is going from "paste this listing" to a verdict.
 - **Phase 1** — natural-language query parsing ("a 3BHK in a good locality within
   10km of my office, budget 50k/month").
 - **Phase 2** — real-estate platform integration and affiliate links. Blocked on the
